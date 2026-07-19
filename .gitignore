@@ -1,0 +1,43 @@
+# Rendered/local deployment state
+/.local/
+/generated/
+/secrets/
+.env
+.env.*
+*.env
+!.env.example
+!**/.env.example
+*.local
+
+# Credentials and cloud state
+*.key
+*.pem
+*.p12
+*.pfx
+*.kdbx
+.kasmpasswd
+.vnc/
+*cloud-shell*.env
+*-network.env
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/
+
+# Backups, packages, and logs
+backups/
+*.bak
+*.deb
+*.log
+*.tar
+*.tgz
+*.tar.gz
+*.tar.gpg
+
+# Tool/editor output
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+coverage/
+tmp/
