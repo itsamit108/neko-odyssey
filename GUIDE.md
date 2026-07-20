@@ -1150,6 +1150,10 @@ sudo -u desktop env \
   XDG_RUNTIME_DIR="/run/user/$DESKTOP_UID" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$DESKTOP_UID/bus" \
   systemctl --user is-active 'kasmvncserver@:1.service'
+sudo test -S "/run/user/$DESKTOP_UID/bus"
+pgrep -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)'
+pgrep -u desktop -f '^/usr/libexec/gnome-session-binary --session=ubuntu$'
+pgrep -x -u desktop gnome-shell
 sudo ss -lntup
 sudo ss -lnt | grep '127.0.0.1:8444'
 sudo test -S /run/kasmvnc/kasm.sock
@@ -1160,7 +1164,8 @@ sudo /usr/local/sbin/neko-cloud-validate desktop /opt/neko-cloud
 
 Expected state:
 
-- KasmVNC, the bridge, Caddy, and the GNOME handover service are active;
+- KasmVNC, Xvnc, the top-level Ubuntu GNOME session, GNOME Shell, the user D-Bus,
+  the bridge, Caddy, and the GNOME handover service are active;
 - KasmVNC TCP 8444 binds only to `127.0.0.1`;
 - `/run/kasmvnc/kasm.sock` exists;
 - Caddy is up and has a trusted certificate for `DESKTOP_HOST`;
@@ -1766,6 +1771,10 @@ sudo -u desktop env \
   XDG_RUNTIME_DIR="/run/user/$DESKTOP_UID" \
   DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$DESKTOP_UID/bus" \
   systemctl --user is-active 'kasmvncserver@:1.service'
+sudo test -S "/run/user/$DESKTOP_UID/bus"
+pgrep -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)'
+pgrep -u desktop -f '^/usr/libexec/gnome-session-binary --session=ubuntu$'
+pgrep -x -u desktop gnome-shell
 sudo docker compose ps
 sudo docker compose logs --tail=100 neko caddy
 sudo ss -lntup
@@ -1782,7 +1791,8 @@ sudo /usr/local/sbin/neko-cloud-validate combined /opt/neko-cloud
 
 Expected state:
 
-- Neko, Caddy, KasmVNC, the bridge, and the GNOME handover service are active;
+- Neko, Caddy, KasmVNC, Xvnc, the top-level Ubuntu GNOME session, GNOME Shell,
+  the user D-Bus, the bridge, and the GNOME handover service are active;
 - TCP 8444 binds only to `127.0.0.1` and the Unix socket exists;
 - host TCP 8080 is unreachable while Caddy can reach `neko:8080` privately;
 - public listeners match TCP 80/443/59000 and UDP 59000;
@@ -1856,6 +1866,32 @@ For the combined system:
 4. Reboot the VM and repeat public-boundary and functional checks for both hostnames.
 5. Inspect logs for restarts, out-of-memory events, authentication failures, and TLS
    errors.
+
+After closing or saving desktop applications, run this one-time recovery test from SSH.
+It deliberately ends GNOME and proves that the foreground KasmVNC service replaces the
+entire display automatically instead of preserving a black framebuffer:
+
+```bash
+set -euo pipefail
+old_vnc=$(pgrep -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)' | head -n1)
+old_session=$(pgrep -u desktop -f '^/usr/libexec/gnome-session-binary --session=ubuntu$' | head -n1)
+sudo kill -TERM "$old_session"
+
+for attempt in $(seq 1 20); do
+  new_vnc=$(pgrep -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)' | head -n1 || true)
+  new_session=$(pgrep -u desktop -f '^/usr/libexec/gnome-session-binary --session=ubuntu$' | head -n1 || true)
+  if [ -n "$new_vnc" ] && [ -n "$new_session" ] && \
+     [ "$new_vnc" != "$old_vnc" ] && [ "$new_session" != "$old_session" ] && \
+     pgrep -x -u desktop gnome-shell >/dev/null; then
+    echo 'PASS: KasmVNC and GNOME recovered automatically'
+    exit 0
+  fi
+  sleep 1
+done
+
+echo 'FAIL: desktop did not recover within 20 seconds' >&2
+exit 1
+```
 
 On a borrowed computer, use private browsing, never save or share credentials, sign
 out, and close the window. A compromised endpoint can still capture them.
@@ -5068,17 +5104,22 @@ chmod 0755 "$HOME/.vnc/xstartup"
 ```
 
 Create a portable **user** systemd template. `%t` resolves to this user's runtime
-directory, avoiding the non-portable `/run/user/1001` hardcoding from the first build:
+directory, avoiding the non-portable `/run/user/1001` hardcoding from the first build.
+KasmVNC's `-fg` launcher remains attached to `xstartup`; when GNOME exits it also ends
+Xvnc, allowing systemd to replace the complete display instead of leaving a black but
+otherwise healthy framebuffer:
 
 ```bash
 install -d -m 0700 "$HOME/.config/systemd/user"
 cat > "$HOME/.config/systemd/user/kasmvncserver@.service" <<'UNIT'
 [Unit]
 Description=KasmVNC Ubuntu desktop on display %i
-After=network.target
+Wants=dbus.socket
+After=network.target dbus.socket
+StartLimitIntervalSec=0
 
 [Service]
-Type=forking
+Type=simple
 Environment=XDG_RUNTIME_DIR=%t
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
 Environment=XDG_CONFIG_DIRS=/etc/xdg/xdg-ubuntu:/etc/xdg
@@ -5091,10 +5132,11 @@ Environment=XDG_CURRENT_DESKTOP=ubuntu:GNOME
 Environment=GNOME_SHELL_SESSION_MODE=ubuntu
 Environment=GDMSESSION=ubuntu
 ExecStartPre=-/usr/bin/kasmvncserver -kill %i
-ExecStart=/usr/bin/kasmvncserver %i
-ExecStop=/usr/bin/kasmvncserver -kill %i
-Restart=on-failure
+ExecStart=/usr/bin/kasmvncserver -fg %i
+ExecStop=-/usr/bin/kasmvncserver -kill %i
+Restart=always
 RestartSec=5s
+TimeoutStopSec=30s
 
 [Install]
 WantedBy=default.target
@@ -5115,7 +5157,10 @@ exit
 Linger starts the user's systemd manager at boot even without SSH login; it does not
 make the Kasm password a Linux login password. Disabling GNOME's idle lock is deliberate
 for this locked, non-sudo, virtual-only account. Do not copy that policy to a physical
-workstation or a shared Linux account.
+workstation or a shared Linux account. `Restart=always` does not override an explicit
+`systemctl --user stop`; it only recovers unexpected or in-session exits. The five-second
+backoff prevents a tight loop, while disabled start-rate limiting lets the desktop keep
+retrying through a long package-maintenance window.
 
 ##### Reference: 15.5 Preserve the GNOME handover service used by this build
 
@@ -5256,6 +5301,11 @@ Reconnect after the provider reports the VM running, then run:
 systemctl --failed --no-pager
 systemctl is-active docker.service kasmvnc-socat.service gnome-remote-desktop.service
 sudo neko-cloud-desktop systemctl is-active 'kasmvncserver@:1.service'
+DESKTOP_UID=$(id -u desktop)
+sudo test -S "/run/user/$DESKTOP_UID/bus"
+pgrep -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)'
+pgrep -u desktop -f '^/usr/libexec/gnome-session-binary --session=ubuntu$'
+pgrep -x -u desktop gnome-shell
 cd /opt/neko-cloud && sudo docker compose ps
 sudo docker inspect --format '{{.Name}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' \
   $(sudo docker compose ps -q)
@@ -5266,8 +5316,9 @@ swapon --show
 free -h
 ```
 
-Every required service should be active; Caddy and Neko should be `Up`; disk and memory
-must have safe headroom; no container should report an OOM kill or unexplained restart.
+Every required service should be active; the user bus, Xvnc, top-level GNOME session,
+and GNOME Shell must exist; Caddy and Neko should be `Up`; disk and memory must have safe
+headroom; no container should report an OOM kill or unexplained restart.
 Any configured swap source must be active after reboot. Confirm 8080 and TCP 8444 are
 not bound to a public interface.
 
@@ -5394,8 +5445,9 @@ GUI authorization prompts and `sudo` are intentionally unavailable. Perform pack
 service, and system changes over SSH as `ADMIN_USER`, using `sudo` there.
 
 Closing the local viewer does not stop the VM. Neko continues according to its session
-state; the GNOME desktop and open apps persist. To intentionally end GNOME applications,
-log out inside Ubuntu or stop the Kasm user service over SSH.
+state; the GNOME desktop and open apps persist. Logging out inside Ubuntu ends the current
+applications, then `Restart=always` creates a fresh desktop. To keep GNOME stopped, use
+`systemctl stop` on the Kasm user service over SSH; an explicit stop is not auto-restarted.
 
 No VPN client, RDP client, browser extension, phone authenticator, or passkey is required
 by this deployment. That convenience does not make an unknown laptop trustworthy.
@@ -5435,10 +5487,15 @@ sudo docker compose logs --tail=200 neko caddy
 sudo docker stats --no-stream
 
 # Host desktop and bridge
+DESKTOP_UID=$(id -u desktop)
 sudo neko-cloud-desktop systemctl status 'kasmvncserver@:1.service' --no-pager
 sudo systemctl status kasmvnc-socat.service gnome-remote-desktop.service --no-pager
 sudo neko-cloud-desktop journalctl -u 'kasmvncserver@:1.service' -n 200 --no-pager
 sudo journalctl -u kasmvnc-socat.service -n 200 --no-pager
+sudo test -S "/run/user/$DESKTOP_UID/bus"
+pgrep -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)'
+pgrep -u desktop -f '^/usr/libexec/gnome-session-binary --session=ubuntu$'
+pgrep -x -u desktop gnome-shell
 
 # Capacity and listeners
 free -h
@@ -5481,10 +5538,13 @@ sudo apt-get upgrade -y
 test -e /var/run/reboot-required && cat /var/run/reboot-required || true
 ```
 
-Reboot if required, then repeat section 17. For containers, never use an unattended
-floating-tag updater. Pull the desired tag, inspect its release notes and digest, replace
-one pinned digest in `compose.yaml`, recreate that service, test, and retain the old
-digest for rollback:
+Reboot if required, then repeat section 17 and run
+`sudo /usr/local/sbin/neko-cloud-validate <MODE> /opt/neko-cloud`. Normal unattended OS
+security updates do not need to be disabled: foreground supervision recycles the complete
+KasmVNC/GNOME display if a package update restarts the desktop session. For containers,
+never use an unattended floating-tag updater. Pull the desired tag, inspect its release
+notes and digest, replace one pinned digest in `compose.yaml`, recreate that service,
+test, and retain the old digest for rollback:
 
 ```bash
 cd /opt/neko-cloud
@@ -6005,15 +6065,23 @@ allowed by the provider, and allowed by any host/edge firewall. Test another net
 corporate Wi-Fi may block UDP, in which case TCP fallback should work. Reduce resolution
 and frame rate if the session connects but encoding stalls.
 
-##### Reference: Desktop returns 401, 502, or a blank page
+##### Reference: Desktop returns 401, 502, a blank page, or a black framebuffer
 
 - `401 Unauthorized` is normal before Kasm Basic authentication. Use the Kasm username
   and Kasm password, not the Neko password or Linux SSH key.
 - `502 Bad Gateway` means Caddy cannot traverse the socket bridge to TCP 8444.
+- A visible Kasm toolbar/sidebar with a black canvas usually means the WebSocket and Xvnc
+  are alive but the GNOME session or GNOME Shell exited. Refreshing the browser alone does
+  not rerun `xstartup` and cannot repair that server-side process tree.
 
 ```bash
+DESKTOP_UID=$(id -u desktop)
 sudo neko-cloud-desktop systemctl status 'kasmvncserver@:1.service' --no-pager
 sudo systemctl status kasmvnc-socat.service --no-pager
+sudo test -S "/run/user/$DESKTOP_UID/bus"
+pgrep -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)'
+pgrep -u desktop -f '^/usr/libexec/gnome-session-binary --session=ubuntu$'
+pgrep -x -u desktop gnome-shell
 sudo ss -lntup | grep 8444
 sudo stat /run/kasmvnc/kasm.sock
 sudo curl --unix-socket /run/kasmvnc/kasm.sock -I http://localhost/
@@ -6022,7 +6090,10 @@ cd /opt/neko-cloud && sudo docker compose logs --tail=300 caddy
 
 Restart in dependency order: Kasm user service, socat system service, then Caddy. If the
 socket was created after the container, force-recreate Caddy. Never solve a 502 by
-publishing 8444 publicly.
+publishing 8444 publicly. For durable black-frame recovery, the Kasm user unit must use
+`Type=simple`, `ExecStart=/usr/bin/kasmvncserver -fg %i`, `Restart=always`, and the user
+D-Bus ordering shown in the service template. A background/forking launcher can leave
+Xvnc healthy after GNOME dies, which systemd cannot recognize as a failure.
 
 ##### Reference: The desktop looks like XFCE instead of normal Ubuntu
 
@@ -6351,6 +6422,9 @@ source-grounded equivalents rather than claims of executed deployments.
 8. Resource pressure during desktop installation temporarily made the VM appear
    unresponsive. Provider metrics/console, reboot recovery, swap, and measured cleanup
    were added to the runbook rather than recreating the VM.
+9. A later GNOME restart left Xvnc and its authenticated WebSocket alive with a black
+   framebuffer. Running KasmVNC in the foreground and restarting the complete process
+   tree on every session exit made the desktop self-healing.
 
 #### Reference: Corrections carried into the generic project
 
@@ -6360,15 +6434,18 @@ source-grounded equivalents rather than claims of executed deployments.
 - Neko-only, desktop-only, and combined modes now have distinct port and sizing rules.
 - OCI Ubuntu preserves Oracle's firewall/iSCSI rules and does not enable UFW.
 - Static/reserved address state is a required inventory item before relying on DNS.
+- The Kasm user unit supervises `kasmvncserver -fg`, restarts on every unexpected GNOME
+  exit, waits five seconds between attempts, and orders startup after the user D-Bus.
 - Password-only access is documented as a baseline tradeoff, not a universal best
   practice; stronger proxy/VPN identity is an optional security layer.
 
 #### Reference: Acceptance evidence
 
 The case validated HTTPS/certificate verification, authenticated video, remote mouse and
-keyboard, GNOME Activities, screen resizing, session persistence, reboot recovery, Neko
-TCP/UDP media, and external closure of internal ports. Screenshots, rendered host
-configuration, credentials, and provider identifiers are excluded from this repository;
+keyboard, GNOME Activities, screen resizing, session persistence, reboot recovery,
+controlled GNOME-exit recovery, Neko TCP/UDP media, and external closure of internal
+ports. Screenshots, rendered host configuration, credentials, and provider identifiers
+are excluded from this repository;
 store any future evidence in access-controlled private storage.
 
 ### Reference: Sanitized Azure AMD64 Neko-only deployment case study
@@ -6928,10 +7005,12 @@ Source asset: `kasmvncserver@.service`. Intended runtime filename: `/home/deskto
 ```text
 [Unit]
 Description=KasmVNC Ubuntu desktop on display %i
-After=network.target
+Wants=dbus.socket
+After=network.target dbus.socket
+StartLimitIntervalSec=0
 
 [Service]
-Type=forking
+Type=simple
 Environment=XDG_RUNTIME_DIR=%t
 Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=%t/bus
 Environment=XDG_CONFIG_DIRS=/etc/xdg/xdg-ubuntu:/etc/xdg
@@ -6944,10 +7023,11 @@ Environment=XDG_CURRENT_DESKTOP=ubuntu:GNOME
 Environment=GNOME_SHELL_SESSION_MODE=ubuntu
 Environment=GDMSESSION=ubuntu
 ExecStartPre=-/usr/bin/kasmvncserver -kill %i
-ExecStart=/usr/bin/kasmvncserver %i
-ExecStop=/usr/bin/kasmvncserver -kill %i
-Restart=on-failure
+ExecStart=/usr/bin/kasmvncserver -fg %i
+ExecStop=-/usr/bin/kasmvncserver -kill %i
+Restart=always
 RestartSec=5s
+TimeoutStopSec=30s
 
 [Install]
 WantedBy=default.target
@@ -7157,11 +7237,17 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
   require_file /home/desktop/.vnc/xstartup
   require_file '/home/desktop/.config/systemd/user/kasmvncserver@.service'
   require_file /etc/systemd/system/kasmvnc-socat.service
-  for command_name in dbus-update-activation-environment gnome-session kasmvncserver loginctl runuser socat systemctl; do
+  for command_name in dbus-update-activation-environment gnome-session kasmvncserver loginctl pgrep runuser socat systemctl; do
     require_command "$command_name"
   done
 
+  grep -Fq 'Wants=dbus.socket' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must order the user D-Bus'
+  grep -Fq 'StartLimitIntervalSec=0' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must not exhaust its recovery attempts'
+  grep -Fq 'Type=simple' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must use foreground supervision'
   grep -Fq 'Environment=XDG_RUNTIME_DIR=%t' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must use systemd %t'
+  grep -Fq 'ExecStart=/usr/bin/kasmvncserver -fg %i' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must keep the launcher in the foreground'
+  grep -Fq 'ExecStop=-/usr/bin/kasmvncserver -kill %i' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must tolerate an already-stopped display'
+  grep -Fq 'Restart=always' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must replace the display after a GNOME exit'
   if grep -Eq '/run/user/[0-9]+' '/home/desktop/.config/systemd/user/kasmvncserver@.service'; then
     fail 'Kasm user unit contains a hardcoded numeric UID'
   fi
@@ -7303,6 +7389,19 @@ wait_for_neko_backend() {
   return 1
 }
 
+wait_for_desktop_session() {
+  local user=$1 attempt
+  for ((attempt = 1; attempt <= 18; attempt++)); do
+    if pgrep -u "$user" -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)' >/dev/null &&
+       pgrep -u "$user" -f '^/usr/libexec/gnome-session-binary --session=ubuntu$' >/dev/null &&
+       pgrep -x -u "$user" gnome-shell >/dev/null; then
+      return
+    fi
+    sleep 5
+  done
+  return 1
+}
+
 [ "$#" -ge 1 ] && [ "$#" -le 2 ] || usage
 MODE=$1
 case "$MODE" in
@@ -7323,7 +7422,7 @@ ENV_FILE=$DEPLOY_DIR/.env
 [ "$(stat -c '%a' "$ENV_FILE")" = 600 ] || fail "$ENV_FILE must have mode 0600"
 [ "$(stat -c '%u' "$ENV_FILE")" -eq 0 ] || fail "$ENV_FILE must be owned by root"
 
-for command_name in awk curl docker dpkg-query getent grep id loginctl passwd runuser ss stat systemctl; do
+for command_name in awk curl docker dpkg-query getent grep id loginctl passwd pgrep runuser ss stat systemctl; do
   require_command "$command_name"
 done
 docker compose --env-file "$ENV_FILE" -f "$DEPLOY_DIR/compose.yaml" config --quiet
@@ -7399,7 +7498,13 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
   [ "$(stat -c '%a %U:%G' /home/desktop/.vnc/xstartup)" = '755 desktop:desktop' ] || fail 'xstartup must be mode 0755 and owned by desktop:desktop'
   [ "$(stat -c '%a %U:%G' '/home/desktop/.config/systemd/user/kasmvncserver@.service')" = '644 desktop:desktop' ] || fail 'KasmVNC user unit must be mode 0644 and owned by desktop:desktop'
   [ "$(stat -c '%a %U:%G' /etc/systemd/system/kasmvnc-socat.service)" = '644 root:root' ] || fail 'KasmVNC bridge unit must be mode 0644 and owned by root:root'
+  grep -Fq 'Wants=dbus.socket' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must order the user D-Bus'
+  grep -Fq 'StartLimitIntervalSec=0' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must not exhaust its recovery attempts'
+  grep -Fq 'Type=simple' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must use foreground supervision'
   grep -Fq 'Environment=XDG_RUNTIME_DIR=%t' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must use systemd %t'
+  grep -Fq 'ExecStart=/usr/bin/kasmvncserver -fg %i' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must keep the launcher in the foreground'
+  grep -Fq 'ExecStop=-/usr/bin/kasmvncserver -kill %i' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must tolerate an already-stopped display'
+  grep -Fq 'Restart=always' '/home/desktop/.config/systemd/user/kasmvncserver@.service' || fail 'Kasm user unit must replace the display after a GNOME exit'
   if grep -Eq '/run/user/[0-9]+' '/home/desktop/.config/systemd/user/kasmvncserver@.service'; then
     fail 'Kasm user unit contains a hardcoded numeric UID'
   fi
@@ -7414,12 +7519,14 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
   systemctl is-active --quiet gnome-remote-desktop.service || fail 'GNOME handover service is not active'
 
   desktop_uid=$(id -u desktop)
+  [ -S "/run/user/$desktop_uid/bus" ] || fail 'desktop user D-Bus socket is missing'
   runuser -u desktop -- env \
     HOME=/home/desktop USER=desktop LOGNAME=desktop \
     XDG_RUNTIME_DIR="/run/user/$desktop_uid" \
     DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$desktop_uid/bus" \
     systemctl --user is-active --quiet 'kasmvncserver@:1.service' \
     || fail 'desktop KasmVNC user service is not active'
+  wait_for_desktop_session desktop || fail 'Xvnc and the complete Ubuntu GNOME process tree are not healthy'
 
   require_loopback_only_tcp 8444
   require_no_public_udp 8444
@@ -7510,6 +7617,18 @@ grep -Fq 'interface: 127.0.0.1' deploy/kasmvnc.yaml \
   || fail 'KasmVNC must bind to loopback'
 grep -Fq 'Environment=XDG_RUNTIME_DIR=%t' 'deploy/kasmvncserver@.service' \
   || fail 'the user unit must use systemd %t'
+grep -Fq 'Wants=dbus.socket' 'deploy/kasmvncserver@.service' \
+  || fail 'the user unit must order the user D-Bus'
+grep -Fq 'StartLimitIntervalSec=0' 'deploy/kasmvncserver@.service' \
+  || fail 'the user unit must allow repeated recovery attempts'
+grep -Fq 'Type=simple' 'deploy/kasmvncserver@.service' \
+  || fail 'the user unit must use foreground supervision'
+grep -Fq 'ExecStart=/usr/bin/kasmvncserver -fg %i' 'deploy/kasmvncserver@.service' \
+  || fail 'the user unit must keep the launcher in the foreground'
+grep -Fq 'ExecStop=-/usr/bin/kasmvncserver -kill %i' 'deploy/kasmvncserver@.service' \
+  || fail 'the user unit must tolerate an already-stopped display'
+grep -Fq 'Restart=always' 'deploy/kasmvncserver@.service' \
+  || fail 'the user unit must replace the display after a GNOME exit'
 grep -Fq 'WantedBy=default.target' 'deploy/kasmvncserver@.service' \
   || fail 'the user unit has no default.target install target'
 grep -Fq 'WantedBy=multi-user.target' deploy/kasmvnc-socat.service \
