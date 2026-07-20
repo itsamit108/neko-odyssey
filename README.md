@@ -9,8 +9,8 @@ A documentation-first, multi-cloud tutorial for running:
 
 Everything needed to reproduce the setup is readable in [GUIDE.md](GUIDE.md): cloud
 networking, commands, configuration templates, validation scripts, security, costs,
-operations, recovery, and the tested OCI ARM64 case study. Nothing is hidden behind a
-generator or installer.
+operations, recovery, and sanitized OCI end-to-end and Azure infrastructure-test case
+studies. Nothing is hidden behind a generator or installer.
 
 ## Choose one mode
 
@@ -19,6 +19,10 @@ generator or installer.
 | Neko only | Shared synchronized browser with audio and controlled input | TCP 80/443/59000; UDP 59000 | 2 vCPU, 4-8 GiB | [Open](GUIDE.md#tutorials-neko-only-deployment) |
 | Desktop only | Persistent Ubuntu GNOME desktop in a browser | TCP 80/443 | 2-4 vCPU, 8-12 GiB | [Open](GUIDE.md#tutorials-desktop-only-deployment) |
 | Combined | Both services on one VM and two hostnames | TCP 80/443/59000; UDP 59000 | 4 vCPU, 12-16 GiB | [Open](GUIDE.md#tutorials-combined-deployment) |
+
+These are recommended starting sizes. An Azure 2-vCPU/1-GiB Neko-only infrastructure
+test used 4 GiB of persistent swap and `1024x576@20`; it is not demonstrated browser
+session capacity, not the normal minimum, and not suitable for the desktop modes.
 
 TCP 22 is separate key-only SSH administration and should be restricted to a trusted
 source CIDR. Never publish Neko 8080, KasmVNC 8444, raw VNC 5901, or RDP 3389.
@@ -42,10 +46,12 @@ passwords, private keys, rendered cloud state, backups, and live endpoints must 
 enter Git. Direct application passwords do not provide MFA; sensitive deployments
 should add a compatible identity-aware proxy or VPN.
 
-The combined design was tested end to end on Ubuntu 24.04 ARM64 in OCI. Other provider
-paths are grounded in official provider documentation and equivalent networking, not
-claimed as separately executed deployments. Recheck prices, quotas, images, and regional
-availability before provisioning.
+The combined design was tested end to end on Ubuntu 24.04 ARM64 in OCI. Neko-only was
+also deployed and infrastructure-tested on Ubuntu 24.04 AMD64 in Azure, including
+trusted TLS, the TCP/UDP boundary, cleanup, persistent swap, and reboot recovery. The
+remaining provider/mode paths are grounded in official documentation and equivalent
+networking, not claimed as separately executed deployments. Recheck prices, quotas,
+images, and regional availability before provisioning.
 
 ## Repository contents
 

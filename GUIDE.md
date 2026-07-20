@@ -163,12 +163,14 @@ instead of opening an internal port.
 - [Compatibility and pinned versions](#reference-compatibility-and-support-matrix)
 - [Complete multi-cloud reference](#reference-complete-multi-cloud-neko-and-ubuntu-browser-desktop-reference)
 - [Sanitized OCI ARM64 combined-mode case study](#reference-sanitized-oci-arm64-combined-deployment-case-study)
+- [Sanitized Azure AMD64 Neko-only case study](#reference-sanitized-azure-amd64-neko-only-deployment-case-study)
 
-The combined architecture was tested end to end on Ubuntu 24.04 ARM64 in OCI. Other
-provider paths are source-grounded equivalents, not claims of completed deployments on
-every cloud. Read the repository [security policy](#reference-security-policy) before publishing an
-endpoint and [contribution guide](#reference-contributing-and-validation) before changing templates or
-version pins.
+The combined architecture was tested end to end on Ubuntu 24.04 ARM64 in OCI. Neko-only
+was also deployed and infrastructure-tested on Ubuntu 24.04 AMD64 in Azure. Remaining
+provider/mode paths are source-grounded equivalents, not claims of completed deployments
+on every cloud. Read the repository [security policy](#reference-security-policy) before
+publishing an endpoint and [contribution guide](#reference-contributing-and-validation)
+before changing templates or version pins.
 
 ---
 
@@ -209,6 +211,13 @@ supplied profile starts at 1280x720. Confirm provider-specific free-tier limits 
 [sizing and cost](#design-sizing-and-cost), and check
 [compatibility](#reference-compatibility-and-support-matrix) before changing the AMD64/ARM64 Firefox
 image or version.
+
+A 2-vCPU/1-GiB Azure VM was able to complete constrained Neko-only infrastructure tests
+with 4 GiB of persistent swap, `shm_size: '1gb'`, and
+`NEKO_DESKTOP_SCREEN: '1024x576@20'`. This is an infrastructure-test configuration
+with active swapping and little headroom, not demonstrated browser-session capacity or
+a replacement for the 4-GiB minimum above. Never use it for desktop-only, combined,
+concurrent, or video-heavy workloads.
 
 ##### Tutorials: Neko: Provision the VM and network
 
@@ -500,6 +509,10 @@ cd /opt/neko-cloud
 sudo docker compose ps
 sudo docker compose logs --tail=100 neko caddy
 sudo ss -lntup | grep -E ':(80|443|59000)\b'
+sudo swapon --show
+sudo docker inspect --format '{{.Name}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' \
+  $(sudo docker compose ps -q)
+sudo docker stats --no-stream
 
 if curl -fsS --connect-timeout 2 http://127.0.0.1:8080/ >/dev/null; then
   echo 'ERROR: host port 8080 is unexpectedly published' >&2
@@ -515,7 +528,8 @@ Expected state:
 - host TCP 80, TCP 443, and TCP/UDP 59000 are listening;
 - host TCP 8080 is unreachable;
 - Caddy can reach `neko:8080` on the private Compose network;
-- the Caddy log shows successful certificate issuance for `NEKO_HOST`.
+- the Caddy log shows successful certificate issuance for `NEKO_HOST`;
+- no container reports an unexpected restart or OOM kill, and configured swap is active.
 
 The validation command is mode-specific. Do not validate a Neko runtime with the
 desktop or combined mode contract.
@@ -547,6 +561,29 @@ Expected TCP results from the administrator's IP:
 A TCP probe does not test UDP 59000. A real media session from another network is the
 decisive test.
 
+If `tcpdump` is already installed, one harmless datagram can prove that the cloud and
+host firewalls deliver UDP 59000 to the VM. Start the capture on the VM:
+
+```bash
+sudo timeout 15 tcpdump -nn -i any 'udp dst port 59000' -c 1
+```
+
+Then send one packet from external Windows PowerShell:
+
+```powershell
+$Udp = [System.Net.Sockets.UdpClient]::new()
+try {
+  $Bytes = [Text.Encoding]::ASCII.GetBytes('neko-udp-path-check')
+  [void]$Udp.Send($Bytes, $Bytes.Length, 'PUBLIC_IP', 59000)
+} finally {
+  $Udp.Dispose()
+}
+```
+
+A captured packet proves transport reachability only. It does not prove ICE negotiation,
+decoded media, audio, or browser control; the real cross-network Neko session below
+remains mandatory.
+
 ##### Tutorials: Neko: Complete the functional acceptance test
 
 **Context: External web browser**
@@ -564,7 +601,9 @@ decisive test.
    that blocks UDP, verify TCP 59000 fallback.
 6. Restart only the Neko container and confirm the browser profile is intentionally
    stateless unless you deliberately added an encrypted, backed-up profile volume.
-7. Reboot the VM and repeat the HTTPS, login, control, and audio tests.
+7. Reboot the VM and repeat the HTTPS, login, control, and audio tests. Also require
+   `systemctl --failed` to be empty, configured swap to appear in `swapon --show`, and
+   Neko/Caddy to return without restart loops or OOM kills.
 
 On a borrowed laptop, use a private window, never save the administrator password,
 sign out, and close the window. Private mode reduces residue but cannot stop malware or
@@ -2132,6 +2171,10 @@ Use at least 50 GiB encrypted storage; increase it for downloads, browser profil
 snapshots, or desktop applications. Add swap only after measuring memory pressure and
 understanding the provider disk's performance and cost.
 
+The tested 1-GiB Azure Neko-only exception used `1024x576@20`, 1 GiB of container shared
+memory, and 4 GiB of persistent disk-backed swap. It proves a constrained service can
+start; it does not turn disk into RAM or establish a durable production minimum.
+
 #### Design: Why â€œfree VMâ€ does not mean free deployment
 
 Provider allowances change and are shared across an account. Charges can come from:
@@ -2449,6 +2492,7 @@ sudo journalctl -b -p warning --no-pager
 |---|---|---|
 | SSH and both URLs fail | VM/routing/public IP | Provider state, serial console, route, address attachment |
 | HTTP works, HTTPS fails | DNS/ACME/firewall | `A` records, TCP 80/443, Caddy logs |
+| Local Caddy/backend works but ACME times out | Cloud ingress/effective NSG | NIC and subnet NSGs, then external TCP 80/443 |
 | Neko page loads, media fails | WebRTC path | `nat1to1`, TCP+UDP 59000, client network |
 | Neko says token not found | Auth/client compatibility | Pinned version, legacy/cookie settings, fresh private window |
 | Video works but clicks do not | Neko control ownership | Request/release control in Neko UI |
@@ -3964,8 +4008,12 @@ Neko design.
 ##### Reference: 10.1 Cost and VM choice
 
 Azure's eligible-new-account ARM offer includes B2pts v2 hours for 12 months, but that
-SKU has only 1 GiB RAM and is unsuitable. Use paid `Standard_B2pls_v2` (2 vCPU/4 GiB)
-for a constrained test or `Standard_B2ps_v2` (2 vCPU/8 GiB) for a practical minimum.
+SKU has only 1 GiB RAM and is below this project's normal minimum. A distinct AMD64
+`Standard_B2ats_v2` 2-vCPU/1-GiB VM completed the sanitized Neko-only infrastructure
+case study only with a reduced `1024x576@20` profile and 4 GiB of persistent swap. Do
+not assume either 1-GiB SKU is free, comfortable, or suitable for desktop/combined use.
+Use `Standard_B2pls_v2` (2 vCPU/4 GiB) for a constrained ARM test or
+`Standard_B2ps_v2` (2 vCPU/8 GiB) for a practical ARM minimum.
 Review the [Bpsv2 table](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/bpsv2-series),
 [Azure free account](https://azure.microsoft.com/en-us/free/), and
 [free service limits](https://azure.microsoft.com/en-us/pricing/free-services/).
@@ -4022,6 +4070,45 @@ Azure NSGs are stateful. Their default deny handles all unlisted inbound ports. 
 create 8080, 8444, or 3389 rules. Inspect the effective NSG after launch because subnet
 and NIC NSGs both apply. See
 [manage an NSG](https://learn.microsoft.com/en-us/azure/virtual-network/manage-network-security-group).
+
+##### Reference: 10.2.1 Existing Azure VM and one-off CLI
+
+For an existing VM, UFW and listening sockets can be correct while Azure still drops
+ACME and WebRTC traffic. Discover whether the effective NSG is attached to the primary
+NIC or its subnet before adding the exact rules above. Prefer Azure CLI on a trusted
+workstation or Azure Cloud Shell.
+
+If neither is available, Microsoft's official Azure CLI image can run temporarily on
+the already trusted Docker host. Complete device authorization yourself, never record
+the device code, account output, or token, and do not mount SSH keys, a persistent
+`.azure` directory, or the Docker socket. Use `--rm`, run `az logout`, and remove
+the exact unused CLI image after verifying the NSG.
+
+```bash
+# Host:
+sudo docker run --rm -it mcr.microsoft.com/azure-cli:2.87.0-azurelinux3.0 sh
+
+# Temporary container:
+az login --use-device-code --output none
+az account set --subscription '<SUBSCRIPTION_ID>'
+az vm show -g '<VM_RESOURCE_GROUP>' -n '<VM_NAME>' \
+  --query 'networkProfile.networkInterfaces[0].id' -o tsv
+az network nic show --ids '<NIC_ID>' \
+  --query '{nicNsg:networkSecurityGroup.id,subnet:ipConfigurations[0].subnet.id}' -o yaml
+az network vnet subnet show --ids '<SUBNET_ID>' \
+  --query 'networkSecurityGroup.id' -o tsv
+```
+
+Use the first nonempty NIC/subnet NSG, inspect existing priorities, and apply the two
+rule definitions from section 10.2 to it. After verification, run `az logout`, exit the
+container, and remove the exact unused image:
+
+```bash
+sudo docker image rm mcr.microsoft.com/azure-cli:2.87.0-azurelinux3.0
+```
+
+Re-test 80/443/59000 externally and confirm 8080/3389 remain closed. Caddy retries ACME
+automatically; restarting only Caddy is acceptable when an immediate retry is needed.
 
 ##### Reference: 10.3 Resolve the image and launch
 
@@ -4322,31 +4409,56 @@ root-equivalent. Use `sudo docker ...` in this guide.
 
 ##### Reference: 12.4 Optional swap for small VMs
 
-If `swapon --show` is empty and RAM is 8 GB or less, a 4 GiB swap file provides an
-out-of-memory safety margin. It does not make a CPU-starved VM fast and consumes disk:
+If RAM is 8 GB or less, a 4 GiB swap file can provide an out-of-memory safety margin.
+Active swap is not necessarily persistent: inventory its source and verify that the
+same source returns after reboot. Swap does not make a CPU-starved VM fast and consumes
+disk:
 
 ```bash
-if swapon --noheadings | grep -q .; then
-  echo 'Swap already exists; leave it unchanged.'
+set -euo pipefail
+
+if swapon --noheadings --show=NAME | grep -Fxq /swapfile; then
+  echo '/swapfile is already active; verify persistence below.'
+elif [ -e /swapfile ]; then
+  # swapon validates the swap signature; it refuses an ordinary data file.
+  sudo chmod 0600 /swapfile
+  sudo swapon /swapfile
+elif swapon --noheadings --show=NAME | grep -q .; then
+  echo 'Another swap source is active; do not add /swapfile blindly.'
+  swapon --show
 else
-  if [ -e /swapfile ]; then
-    echo 'STOP: inactive existing /swapfile requires manual review' >&2
-    exit 1
-  fi
   sudo fallocate -l 4G /swapfile
   sudo chmod 0600 /swapfile
   sudo mkswap /swapfile
   sudo swapon /swapfile
+fi
+
+if swapon --noheadings --show=NAME | grep -Fxq /swapfile; then
   grep -Eq '^[[:space:]]*/swapfile[[:space:]]' /etc/fstab || \
     echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
   printf 'vm.swappiness=10\n' | sudo tee /etc/sysctl.d/90-neko-cloud-swap.conf
-  sudo sysctl --system
+  sudo sysctl --load /etc/sysctl.d/90-neko-cloud-swap.conf
+  sudo systemctl daemon-reload
+  sudo findmnt --verify --tab-file /etc/fstab
 fi
+
+swapon --show
 free -h
 ```
 
-Skip creation if swap already exists. Never use the final command blindly on an
-ephemeral/local disk that the provider can discard.
+Never create a second swap source blindly or place the file on provider-local storage
+that can be discarded. Reboot once, then require the configured source to be active:
+
+```bash
+sudo reboot
+# Reconnect:
+swapon --show
+grep -E '^[[:space:]]*/swapfile[[:space:]]+none[[:space:]]+swap[[:space:]]' /etc/fstab
+free -h
+```
+
+If `/swapfile` existed before this procedure but `swapon /swapfile` rejects it, stop
+and identify the file; do not run `mkswap` over an unknown existing path.
 
 ##### Reference: 12.5 DNS preflight
 
@@ -5145,13 +5257,19 @@ systemctl --failed --no-pager
 systemctl is-active docker.service kasmvnc-socat.service gnome-remote-desktop.service
 sudo neko-cloud-desktop systemctl is-active 'kasmvncserver@:1.service'
 cd /opt/neko-cloud && sudo docker compose ps
+sudo docker inspect --format '{{.Name}} restarts={{.RestartCount}} oom={{.State.OOMKilled}}' \
+  $(sudo docker compose ps -q)
+sudo docker stats --no-stream
 sudo ss -lntup
 df -hT
+swapon --show
 free -h
 ```
 
 Every required service should be active; Caddy and Neko should be `Up`; disk and memory
-must have safe headroom. Confirm 8080 and TCP 8444 are not bound to a public interface.
+must have safe headroom; no container should report an OOM kill or unexplained restart.
+Any configured swap source must be active after reboot. Confirm 8080 and TCP 8444 are
+not bound to a public interface.
 
 ##### Reference: 17.2 External network and TLS tests
 
@@ -5747,16 +5865,20 @@ Those correspond to printing, local mDNS discovery, modem hardware, RPC/NFS disc
 Bluetooth hardware, SSSD domain login, and the legacy generic OpenVPN unit. Do not
 disable a unit if the VM actually uses that feature or a provider depends on it.
 
-Preserve all of these:
+Preserve the components required by the selected mode:
 
-- Docker/containerd, `kasmvnc-socat`, the KasmVNC user service, and user lingering.
-- The tested system `gnome-remote-desktop.service` handover unit, while keeping RDP off.
+- Docker/containerd and Caddy/Neko for Neko-containing modes.
+- `kasmvnc-socat`, the KasmVNC user service, user lingering, and the tested
+  `gnome-remote-desktop.service` handover unit only for desktop-containing modes,
+  while keeping RDP off.
 - `netfilter-persistent` and OCI `InstanceServices`/link-local/iSCSI rules on OCI.
 - The active network renderer, cloud-init/provider guest agent, SSH, time sync, and DNS.
 - Caddy's `/data` and `/config` volumes.
 - Provider snapshots and `/opt/backups` until a verified independent replacement exists.
-- XFCE, when deliberately retained as rollback, until GNOME has a verified snapshot and
-  rollback is no longer desired; inactivity consumes no meaningful runtime CPU.
+
+Do not retain XFCE, XRDP, GNOME, or KasmVNC on a deliberate Neko-only host as an
+unrequested fallback. Inventory packages and services first, then remove only components
+that are both unused and outside the selected mode.
 
 Do not disable `systemd-networkd-wait-online.service` merely because a different host
 once had a slow boot. Change networking units only after proving which renderer owns the
@@ -5938,7 +6060,7 @@ the D-Bus check to fail.
 Use Kasm's Displays control for GNOME and fullscreen for the viewer. `Ctrl+0` resets the
 outer browser's zoom; it does not change the VM resolution. For Neko edit
 `NEKO_DESKTOP_SCREEN` and recreate only Neko. Reduce from 1080p/60 to 1280x720@24 or
-1024x576 when CPU or bandwidth is limited. Confirm local browser zoom is 100% before
+1024x576@20 when CPU or bandwidth is limited. Confirm local browser zoom is 100% before
 diagnosing remote scaling.
 
 ##### Reference: High CPU/RAM, disk full, or crash loops
@@ -6066,7 +6188,7 @@ encrypted system.
 #### Reference: 23. Authoritative references
 
 All provider limits, prices, regions, and software versions can change. The statements
-above were checked on 2026-07-19 against these primary sources.
+above were checked through 2026-07-20 against these primary sources.
 
 ##### Reference: OCI
 
@@ -6111,6 +6233,7 @@ above were checked on 2026-07-19 against these primary sources.
 - [Azure free account](https://azure.microsoft.com/en-us/free/)
 - [Canonical Ubuntu image discovery](https://documentation.ubuntu.com/azure/azure-how-to/instances/find-ubuntu-images/)
 - [Network security groups](https://learn.microsoft.com/en-us/azure/virtual-network/manage-network-security-group)
+- [Run Azure CLI in an official Docker container](https://learn.microsoft.com/en-us/cli/azure/run-azure-cli-docker)
 - [Public IP addresses](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-addresses)
 - [Explicit/default outbound access](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/default-outbound-access)
 
@@ -6174,7 +6297,8 @@ Do not declare a replica complete until every applicable item is checked:
 - [ ] Kasm user service uses `%t`, linger is enabled, socat socket bridge is mode 0660,
   Caddy reaches it, TCP 8444 is loopback-only, and 3389 remains closed.
 - [ ] Required services survive a full reboot with no unexplained failed unit or crash
-  loop; CPU, RAM, swap, disk, and Docker logs have safe headroom.
+  loop; every configured swap source is active; CPU, RAM, disk, and Docker logs have
+  safe headroom.
 - [ ] External TCP/TLS/closed-port tests, real UDP WebRTC media, Neko control/audio,
   Kasm authentication/input/resize, exclusive reconnect, and desktop persistence pass.
 - [ ] Provider snapshot and encrypted off-VM file backups exist, have checksums, exclude
@@ -6204,9 +6328,9 @@ passwords, or unredacted screenshots.
 | Gateway | Caddy with two HTTPS hostnames |
 | Media | Neko TCP+UDP mux on 59000 |
 
-The end-to-end build was verified on 2026-07-19. AWS, GCP, Azure, and generic VPS paths
-in this repository are source-grounded equivalents, not claims that this exact case was
-executed on every provider.
+This combined build was verified on 2026-07-19. Azure Neko-only was separately
+infrastructure-tested in the next case study; AWS, GCP, and generic VPS paths remain
+source-grounded equivalents rather than claims of executed deployments.
 
 #### Reference: What happened
 
@@ -6243,9 +6367,61 @@ executed on every provider.
 
 The case validated HTTPS/certificate verification, authenticated video, remote mouse and
 keyboard, GNOME Activities, screen resizing, session persistence, reboot recovery, Neko
-TCP/UDP media, and external closure of internal ports. Original screenshots and rendered
-host configuration remain in the local ignored `.local/` archive and are not part of the
-publishable repository.
+TCP/UDP media, and external closure of internal ports. Screenshots, rendered host
+configuration, credentials, and provider identifiers are excluded from this repository;
+store any future evidence in access-controlled private storage.
+
+### Reference: Sanitized Azure AMD64 Neko-only deployment case study
+
+This case records the 2026-07-20 Azure deployment without publishing its address,
+hostname, subscription/resource names, administrator CIDR, account identity, SSH key,
+passwords, device codes, tokens, or screenshots.
+
+#### Reference: Azure case environment
+
+| Item | Sanitized value |
+|---|---|
+| Provider | Microsoft Azure, public IPv4 VM |
+| OS | Canonical Ubuntu Server 24.04 AMD64 |
+| Compute | `Standard_B2ats_v2`, 2 vCPU / approximately 1 GiB RAM |
+| Mode | Neko-only; no GNOME, XFCE, KasmVNC, or XRDP |
+| Runtime | Neko Firefox 3.1.4 and Caddy 2.11.4 |
+| Constrained profile | `1024x576@20`, 1-GiB shared memory |
+| Memory safety margin | 4-GiB persistent disk-backed swapfile |
+| Public boundary | TCP 80/443/59000 and UDP 59000 |
+
+This size is not presented as free or recommended. Static/reserved address status and
+immutable image digests were not captured in the publishable evidence and therefore are
+not claimed.
+
+#### Reference: Azure case findings
+
+1. The 1-GiB VM was deliberately limited to Neko-only. A full Ubuntu web desktop was
+   rejected because it would not have safe memory headroom.
+2. Existing Docker state was inventoried first. One stopped unrelated workload, its
+   volume, and its image were removed by exact name; active Docker, networking, provider
+   agent, SSH, and swap components were retained.
+3. UFW and local listeners were correct, but the Azure NSG initially allowed only SSH.
+   ACME timed out until the effective NSG allowed TCP 80/443/59000 and UDP 59000.
+   Neko 8080 and RDP 3389 remained externally closed.
+4. An official Azure CLI container was used only for device-authorized NSG remediation,
+   then its container, writable auth state, exact image, and temporary scripts were
+   removed.
+5. After ingress was corrected, Caddy obtained a trusted certificate. External checks
+   returned HTTP 200 with successful TLS verification; TCP exposure matched the contract,
+   and a captured external datagram proved UDP 59000 reached the VM.
+6. The first reboot restored Neko and Caddy but revealed that an existing active
+   `/swapfile` lacked a persistent fstab entry. The entry was validated and added; a
+   second reboot restored the 4-GiB swap, healthy containers, and zero failed services.
+
+#### Reference: Azure acceptance boundary
+
+The case proves installation, container health, trusted TLS, effective Azure/UFW
+ingress, private 8080, transport-level UDP delivery, exact-target cleanup, persistent
+swap, and reboot recovery. A captured UDP packet is not a WebRTC session. Authenticated
+browser video/audio, ICE negotiation, mouse/keyboard control, and a second viewer remain
+mandatory real-browser acceptance tests and are not claimed by this infrastructure-only
+case.
 
 ### Reference: Project history
 
@@ -6258,8 +6434,8 @@ All notable project changes are recorded here. Dates use ISO 8601.
 - Three explicit deployment modes: Neko-only, Ubuntu GNOME/KasmVNC-only, and combined.
 - Portable deployment templates, preflight/validation scripts, provider navigation,
   security policy, contribution guide, and continuous validation workflow.
-- A publication-safe inventory template and a private ignored area for rendered local
-  operations material.
+- A publication-safe inventory template and ignore rules for rendered local operations
+  material.
 
 ##### Reference: Changed
 
@@ -6267,6 +6443,15 @@ All notable project changes are recorded here. Dates use ISO 8601.
 - Removed live hostnames, public/private IPs, `/home/ubuntu`, and UID `1001` from
   publishable deployment assets.
 - Replaced the host-specific landing page with a generic repository guide.
+
+#### Reference: 2026-07-20
+
+- Added the sanitized Azure AMD64 Neko-only infrastructure case study.
+- Added existing-VM effective-NSG remediation and one-off official Azure CLI guidance.
+- Changed swap validation to prove persistence after reboot rather than assuming an
+  active swap source will return.
+- Clarified the constrained 1-GiB Neko-only floor without lowering recommended sizing or
+  claiming browser-level acceptance that was not performed.
 
 #### Reference: 2026-07-19
 
