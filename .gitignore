@@ -12,9 +12,16 @@
 # Credentials and cloud state
 *.key
 *.pem
+*.ppk
 *.p12
 *.pfx
 *.kdbx
+id_rsa
+id_ed25519
+id_ed25519_sk
+id_ecdsa
+id_ecdsa_sk
+id_dsa
 .kasmpasswd
 .vnc/
 *cloud-shell*.env

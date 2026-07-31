@@ -12,6 +12,11 @@ networking, commands, configuration templates, validation scripts, security, cos
 operations, recovery, and sanitized OCI end-to-end and Azure infrastructure-test case
 studies. Nothing is hidden behind a generator or installer.
 
+Current reviewed baseline (2026-07-30): Ubuntu 24.04.4, Neko Firefox 3.1.4,
+KasmVNC 1.5.0, and Caddy 2.11.4. The guide pins release artifacts and versioned image
+tags, documents promotion to resolved digests, and records when a path is source-reviewed
+rather than live-tested.
+
 ## Choose one mode
 
 | Mode | Result | Public application ports | Starting size | Tutorial |
@@ -46,7 +51,8 @@ passwords, private keys, rendered cloud state, backups, and live endpoints must 
 enter Git. Direct application passwords do not provide MFA; sensitive deployments
 should add a compatible identity-aware proxy or VPN.
 
-The combined design was tested end to end on Ubuntu 24.04 ARM64 in OCI. Neko-only was
+The combined design was tested end to end on Ubuntu 24.04 ARM64 in OCI and
+maintenance-reverified on 2026-07-30. Neko-only was
 also deployed and infrastructure-tested on Ubuntu 24.04 AMD64 in Azure, including
 trusted TLS, the TCP/UDP boundary, cleanup, persistent swap, and reboot recovery. The
 remaining provider/mode paths are grounded in official documentation and equivalent

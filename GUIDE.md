@@ -2,7 +2,7 @@
 
 This standalone, documentation-first guide covers Neko, an Ubuntu GNOME web desktop,
 and a combined deployment on OCI, AWS, GCP, Azure, or a generic VPS. It includes all
-copyable runtime templates and optional helper sources. Start with the [README](README.md)
+copyable runtime templates and required VM validation helpers. Start with the [README](README.md)
 for project orientation. The project is distributed under the [license](LICENSE).
 
 **Contents**
@@ -30,7 +30,7 @@ for project orientation. The project is distributed under the [license](LICENSE)
   - [Compatibility](#reference-compatibility-and-support-matrix)
   - [Complete runbook](#reference-complete-multi-cloud-neko-and-ubuntu-browser-desktop-reference)
   - [Copyable templates](#reference-copyable-deployment-templates)
-  - [Optional helper scripts](#reference-optional-original-helper-scripts)
+  - [VM validation helpers](#reference-required-vm-validation-helpers-and-historical-repository-checker)
   - [Security policy](#reference-security-policy)
   - [Optional GitHub Actions workflow](#reference-optional-github-actions-workflow)
 
@@ -83,15 +83,9 @@ from the provider page immediately before provisioning.
 
 #### Tutorials: Start 3. Deploy the selected mode
 
-Follow the chosen tutorial in order. Each covers:
-
-1. the expected architecture and public port contract;
-2. VM sizing, provider networking, a stable address, and DNS;
-3. Ubuntu patching and Docker installation;
-4. installation of only the selected mode's templates from this guide;
-5. protected runtime secrets and credentials;
-6. host services, firewall, TLS, and boot persistence; and
-7. local, external, browser, and reboot acceptance tests.
+Follow the selected tutorial in order. It covers architecture and ports, sizing/network/DNS,
+Ubuntu and Docker, only that mode's templates and secrets, services/firewall/TLS/boot
+persistence, and local, external, browser, and reboot validation.
 
 Tutorial command labels have these meanings:
 
@@ -154,23 +148,15 @@ instead of opening an internal port.
 | Safe host cleanup or provider teardown | [Clean up](#operations-safe-cleanup-and-cloud-teardown) |
 | Failures and recovery paths | [Troubleshoot](#operations-troubleshooting) |
 
-#### Tutorials: Start: Design, evidence, and reference
+#### Tutorials: Start: Evidence and policy
 
-- [Architecture and trust boundaries](#design-architecture)
-- [Security model and password-only trade-offs](#design-security-model)
-- [Sizing, cost, and ARM64/AMD64](#design-sizing-and-cost)
-- [Browser and CPU architecture choices](#design-browser-and-cpu-architecture)
-- [Compatibility and pinned versions](#reference-compatibility-and-support-matrix)
-- [Complete multi-cloud reference](#reference-complete-multi-cloud-neko-and-ubuntu-browser-desktop-reference)
-- [Sanitized OCI ARM64 combined-mode case study](#reference-sanitized-oci-arm64-combined-deployment-case-study)
-- [Sanitized Azure AMD64 Neko-only case study](#reference-sanitized-azure-amd64-neko-only-deployment-case-study)
-
-The combined architecture was tested end to end on Ubuntu 24.04 ARM64 in OCI. Neko-only
-was also deployed and infrastructure-tested on Ubuntu 24.04 AMD64 in Azure. Remaining
-provider/mode paths are source-grounded equivalents, not claims of completed deployments
-on every cloud. Read the repository [security policy](#reference-security-policy) before
-publishing an endpoint and [contribution guide](#reference-contributing-and-validation)
-before changing templates or version pins.
+See the [OCI ARM64 combined-mode case study](#reference-sanitized-oci-arm64-combined-deployment-case-study)
+and [Azure AMD64 Neko-only case study](#reference-sanitized-azure-amd64-neko-only-deployment-case-study).
+OCI combined was tested end to end on Ubuntu 24.04 ARM64; Azure Neko-only was
+infrastructure-tested on Ubuntu 24.04 AMD64. Other provider/mode paths are source-grounded,
+not claims of testing every permutation. Before publishing or changing templates or pins,
+read the [security policy](#reference-security-policy) and
+[contribution guide](#reference-contributing-and-validation).
 
 ---
 
@@ -178,12 +164,10 @@ before changing templates or version pins.
 
 #### Tutorials: Neko 1. Outcome
 
-Deploy one synchronized Firefox browser at `https://NEKO_HOST`: Neko runs in Docker,
-Caddy terminates TLS, and WebRTC uses one UDP/TCP mux port. This mode does not install
-GNOME, KasmVNC, XRDP, or a general-purpose desktop. Firefox runs **inside the VM**;
-the viewing laptop may use Chrome, Edge, Firefox, or another compatible WebRTC client.
-Use the [combined tutorial](#tutorials-combined-deployment) to add Ubuntu GNOME, and never mix files from
-different mode directories.
+Deploy synchronized Firefox at `https://NEKO_HOST`: Caddy fronts containerized Neko, and
+WebRTC uses TCP/UDP 59000. No GNOME, KasmVNC, XRDP, or general desktop is installed.
+Firefox runs on the VM; the viewer may use any compatible WebRTC browser. To add GNOME,
+use the [combined tutorial](#tutorials-combined-deployment); never mix mode files.
 
 ```text
 local browser
@@ -206,18 +190,13 @@ Start with:
 - one DNS `A` record, such as `neko.example.com`;
 - a trusted workstation with an SSH client and the VM's private key.
 
-Real-time resolution, frame rate, video, and viewer count drive CPU and egress; the
-supplied profile starts at 1280x720. Confirm provider-specific free-tier limits in
-[sizing and cost](#design-sizing-and-cost), and check
-[compatibility](#reference-compatibility-and-support-matrix) before changing the AMD64/ARM64 Firefox
-image or version.
-
-A 2-vCPU/1-GiB Azure VM was able to complete constrained Neko-only infrastructure tests
-with 4 GiB of persistent swap, `shm_size: '1gb'`, and
-`NEKO_DESKTOP_SCREEN: '1024x576@20'`. This is an infrastructure-test configuration
-with active swapping and little headroom, not demonstrated browser-session capacity or
-a replacement for the 4-GiB minimum above. Never use it for desktop-only, combined,
-concurrent, or video-heavy workloads.
+Resolution, frame rate, video, and viewer count drive CPU and egress; the supplied profile
+starts at 1280x720. Check [sizing and cost](#design-sizing-and-cost) and
+[compatibility](#reference-compatibility-and-support-matrix) before changing image,
+architecture, or version. The tested 2-vCPU/1-GiB Azure exception required 4 GiB of
+persistent swap, `shm_size: '1gb'`, and `NEKO_DESKTOP_SCREEN: '1024x576@20'`; it proved
+infrastructure startup only—not browser capacity or a new minimum—and is unsuitable for
+desktop, combined, concurrent, or video-heavy use.
 
 ##### Tutorials: Neko: Provision the VM and network
 
@@ -234,10 +213,8 @@ concurrent, or video-heavy workloads.
 6. Confirm no broader subnet rule already exposes an internal port.
 7. Add cost-budget and resource-usage alerts.
 
-Use the provider-specific instructions for [OCI](#cloud-providers-oracle-cloud-infrastructure),
-[AWS](#cloud-providers-amazon-web-services), [GCP](#cloud-providers-google-cloud), [Azure](#cloud-providers-microsoft-azure), or a
-[generic VPS](#cloud-providers-generic-vps-or-another-cloud). On OCI, security lists and network security
-groups are additive; a restrictive NSG cannot cancel a broad security-list rule.
+Follow the selected [provider guide](#cloud-providers). On OCI, security-list and NSG
+allows are additive; a restrictive NSG cannot cancel a broad security-list rule.
 
 #### Tutorials: Neko 3. Variables and ports
 
@@ -361,10 +338,15 @@ sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
-. /etc/os-release
-CODENAME=${UBUNTU_CODENAME:-$VERSION_CODENAME}
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $CODENAME stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo rm -f /etc/apt/sources.list.d/docker.list
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
   docker-buildx-plugin docker-compose-plugin
@@ -380,11 +362,11 @@ instead of overwriting it.
 
 ##### Tutorials: Neko: Install the Neko-mode assets
 
-Use the same reviewed guide revision recorded earlier. Open the matching
-[copyable template appendix](#reference-copyable-deployment-templates), then save each
-shown block directly to its labeled runtime path. The commands below create and open
-those paths; paste only the selected mode's blocks. If the VM cannot open the guide,
-copy the reviewed text from the trusted workstation. Never mix mode templates.
+From the same reviewed revision, paste only the selected mode's labeled
+[templates](#reference-copyable-deployment-templates) and both
+[validation helpers](#reference-required-vm-validation-helpers-and-historical-repository-checker)
+into the paths below. If the VM cannot open the guide, copy from the trusted workstation.
+Never mix mode templates.
 
 **Context: VM**
 
@@ -394,9 +376,16 @@ sudo install -d -m 0755 -o root -g root /opt/neko-cloud
 sudoedit /opt/neko-cloud/compose.yaml
 sudoedit /opt/neko-cloud/Caddyfile
 sudoedit /opt/neko-cloud/.env
+sudoedit /usr/local/sbin/neko-cloud-preflight
+sudoedit /usr/local/sbin/neko-cloud-validate
 sudo chown root:root /opt/neko-cloud/compose.yaml /opt/neko-cloud/Caddyfile /opt/neko-cloud/.env
 sudo chmod 0644 /opt/neko-cloud/compose.yaml /opt/neko-cloud/Caddyfile
 sudo chmod 0600 /opt/neko-cloud/.env
+sudo chown root:root /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+sudo chmod 0755 /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+for helper in /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate; do
+  sudo bash -n "$helper"
+done
 ```
 
 #### Tutorials: Neko 5. Configure
@@ -435,6 +424,7 @@ sudo test "$(sudo stat -c '%a %U:%G' /opt/neko-cloud/.env)" = '600 root:root'
 if sudo grep -Eq '=(PUBLIC_IP|UNIQUE_|DIFFERENT_|CHANGE_ME|replace-with)' \
   /opt/neko-cloud/.env; then
   echo 'STOP: resolve every placeholder before continuing' >&2
+  exit 1
 fi
 sudo /usr/local/sbin/neko-cloud-preflight neko /opt/neko-cloud
 ```
@@ -643,11 +633,10 @@ network audits, Docker conflicts, TLS failures, WebRTC diagnosis, and recovery.
 
 #### Tutorials: Desktop 1. Outcome
 
-Deploy one persistent Ubuntu GNOME desktop at `https://DESKTOP_HOST`: KasmVNC supplies
-the virtual X11 display and browser client, while Caddy supplies TLS. This headless
-cloud session runs GNOME/Yaru/Ubuntu Dock without a physical login screen; GDM and
-Wayland stay disabled. It deploys neither Neko nor public VNC/RDP. Use the
-[combined tutorial](#tutorials-combined-deployment) if you need both products.
+Deploy persistent Ubuntu GNOME at `https://DESKTOP_HOST`: KasmVNC provides virtual X11
+and browser access; Caddy provides TLS. The headless Yaru/Ubuntu Dock session keeps GDM
+and Wayland disabled, does not install Neko, and exposes no raw/public VNC or RDP port. Use the
+[combined tutorial](#tutorials-combined-deployment) for both products.
 
 ```text
 local browser -- HTTPS 443 --> Caddy container
@@ -671,10 +660,10 @@ Start with:
 - one DNS `A` record, such as `desktop.example.com`;
 - a trusted workstation with an SSH client and the VM's private key.
 
-This normal Ubuntu GNOME appearance costs more memory and disk than XFCE and provides
-one persistent exclusive session, not one desktop per person. It does not promise host
-audio; use Neko for synchronized streaming audio. Before changing versions or CPU,
-check [compatibility](#reference-compatibility-and-support-matrix),
+GNOME uses more memory and disk than XFCE and provides one persistent exclusive session,
+not one desktop per person. Host audio is not promised; use Neko for synchronized audio.
+Before changing versions or architecture, review
+[compatibility](#reference-compatibility-and-support-matrix),
 [browser and CPU architecture](#design-browser-and-cpu-architecture), and
 [sizing and cost](#design-sizing-and-cost).
 
@@ -694,9 +683,7 @@ check [compatibility](#reference-compatibility-and-support-matrix),
 7. Enable cost and resource alerts, and identify serial-console or disk-recovery access
    before installing a desktop stack.
 
-Use the provider-specific instructions for [OCI](#cloud-providers-oracle-cloud-infrastructure),
-[AWS](#cloud-providers-amazon-web-services), [GCP](#cloud-providers-google-cloud), [Azure](#cloud-providers-microsoft-azure), or a
-[generic VPS](#cloud-providers-generic-vps-or-another-cloud).
+Follow the selected [provider guide](#cloud-providers).
 
 #### Tutorials: Desktop 3. Variables and ports
 
@@ -708,8 +695,12 @@ Use this public ingress contract:
 | TCP | 80 | Internet | ACME HTTP validation and HTTPS redirect |
 | TCP | 443 | Internet | KasmVNC web client and WebSocket through Caddy |
 
-Keep TCP/UDP 8444 private, and keep 3389, 5901, 8080, and 59000 closed. The KasmVNC
-listener binds to loopback; Caddy reaches it through `/run/kasmvnc/kasm.sock`.
+Keep TCP and UDP 8444 closed at the provider and host firewalls, and keep 3389, 5901,
+8080, and 59000 closed. KasmVNC's TCP listener binds to loopback, and Caddy reaches it
+through `/run/kasmvnc/kasm.sock`. KasmVNC 1.5 may also open its WebUDP socket on
+`0.0.0.0:8444`; `public_ip: 127.0.0.1` controls advertisement/STUN rather than the UDP
+bind address. This build does not expose or depend on that UDP path. See the
+[versioned WebUDP implementation](https://github.com/kasmtech/KasmVNC/blob/v1.5.0/common/network/webudp/WuNetwork.cpp).
 
 ##### Tutorials: Desktop: DNS
 
@@ -838,10 +829,15 @@ sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
-. /etc/os-release
-CODENAME=${UBUNTU_CODENAME:-$VERSION_CODENAME}
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $CODENAME stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo rm -f /etc/apt/sources.list.d/docker.list
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
   docker-buildx-plugin docker-compose-plugin
@@ -880,7 +876,7 @@ netplan because desktop packages installed NetworkManager components.
 
 ##### Tutorials: Desktop: Install the verified KasmVNC package
 
-This project pins KasmVNC 1.4.0 for Ubuntu 24.04 Noble and verifies the release digest
+This project pins KasmVNC 1.5.0 for Ubuntu 24.04 Noble and verifies the release digest
 for each supported architecture.
 
 **Context: VM**
@@ -890,12 +886,12 @@ set -euo pipefail
 ARCH=$(dpkg --print-architecture)
 case "$ARCH" in
   arm64)
-    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_noble_1.4.0_arm64.deb'
-    KASM_SHA256='120d9462cb5e917cad91a23f6cb0b780c06f701def40e900b29f996979200638'
+    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.5.0/kasmvncserver_noble_1.5.0_arm64.deb'
+    KASM_SHA256='c9199cf4753208bfb69fd016a9780242bebfc43370cc38c97d61e90a3c783e04'
     ;;
   amd64)
-    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_noble_1.4.0_amd64.deb'
-    KASM_SHA256='12bac6014149c5fdee75f0d403785aaa3e5dd4ea222de73253a5d4181bc9567e'
+    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.5.0/kasmvncserver_noble_1.5.0_amd64.deb'
+    KASM_SHA256='f599fe02e2175b9817b6165f74a5d2bebdc73118dde9181ba3410963bed7ae1e'
     ;;
   *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
@@ -903,6 +899,8 @@ KASM_DEB=$(mktemp --suffix=.deb)
 trap 'rm -f -- "$KASM_DEB"' EXIT HUP INT TERM
 curl -fL "$KASM_URL" -o "$KASM_DEB"
 printf '%s  %s\n' "$KASM_SHA256" "$KASM_DEB" | sha256sum -c -
+sudo apt-get install -y ffmpeg
+ffmpeg -hide_banner -encoders 2>/dev/null | grep 'libx264' >/dev/null
 sudo apt-get install -y "$KASM_DEB"
 rm -f -- "$KASM_DEB"
 trap - EXIT HUP INT TERM
@@ -913,13 +911,21 @@ If the pinned release is later changed, obtain both package and digest from the
 official release and update [compatibility](#reference-compatibility-and-support-matrix) in the same
 review. Do not install an unverified package copied from an unrelated tutorial.
 
+KasmVNC 1.5 adds automatic H.264/H.265/AV1 video-streaming selection. This CPU-only
+baseline keeps `codec: auto`, verifies FFmpeg's software `libx264` encoder, and caps the
+session at 720p/30 fps; do not force a hardware encoder unless the VM exposes a supported
+GPU and the selected path has been tested. Package replacement can interrupt the current
+desktop, so retain the prior verified DEB plus a provider snapshot until a reboot and the
+full acceptance checks pass. See the [1.5.0 release notes](https://github.com/kasmtech/KasmVNC/releases/tag/v1.5.0)
+and [versioned encoder probe](https://github.com/kasmtech/KasmVNC/blob/v1.5.0/common/rfb/encoders/EncoderProbe.cpp).
+
 ##### Tutorials: Desktop: Install the desktop-mode assets
 
-Use the same reviewed guide revision recorded earlier. Open the matching
-[copyable template appendix](#reference-copyable-deployment-templates), then save each
-shown block directly to its labeled runtime path. The commands below create and open
-those paths; paste only the selected mode's blocks. If the VM cannot open the guide,
-copy the reviewed text from the trusted workstation. Never mix mode templates.
+From the same reviewed revision, paste only the selected mode's labeled
+[templates](#reference-copyable-deployment-templates) and both
+[validation helpers](#reference-required-vm-validation-helpers-and-historical-repository-checker)
+into the paths below. If the VM cannot open the guide, copy from the trusted workstation.
+Never mix mode templates.
 
 **Context: VM**
 
@@ -929,9 +935,16 @@ sudo install -d -m 0755 -o root -g root /opt/neko-cloud
 sudoedit /opt/neko-cloud/compose.yaml
 sudoedit /opt/neko-cloud/Caddyfile
 sudoedit /opt/neko-cloud/.env
+sudoedit /usr/local/sbin/neko-cloud-preflight
+sudoedit /usr/local/sbin/neko-cloud-validate
 sudo chown root:root /opt/neko-cloud/compose.yaml /opt/neko-cloud/Caddyfile /opt/neko-cloud/.env
 sudo chmod 0644 /opt/neko-cloud/compose.yaml /opt/neko-cloud/Caddyfile
 sudo chmod 0600 /opt/neko-cloud/.env
+sudo chown root:root /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+sudo chmod 0755 /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+for helper in /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate; do
+  sudo bash -n "$helper"
+done
 
 sudo install -d -m 0700 -o desktop -g desktop /home/desktop/.vnc
 sudo install -d -m 0700 -o desktop -g desktop /home/desktop/.config/systemd/user
@@ -970,6 +983,7 @@ Then validate it without printing the file:
 sudo test "$(sudo stat -c '%a %U:%G' /opt/neko-cloud/.env)" = '600 root:root'
 if sudo grep -Eq '=(PUBLIC_IP|CHANGE_ME|replace-with)' /opt/neko-cloud/.env; then
   echo 'STOP: resolve every placeholder before continuing' >&2
+  exit 1
 fi
 sudo /usr/local/sbin/neko-cloud-preflight desktop /opt/neko-cloud
 ```
@@ -1065,6 +1079,7 @@ this does **not** authorize RDP:
 ```bash
 sudo systemctl unmask gnome-remote-desktop.service
 sudo systemctl enable --now gnome-remote-desktop.service
+sudo systemctl add-wants multi-user.target gnome-remote-desktop.service
 if sudo ss -lntup | grep -qE ':(3389)\b'; then
   echo 'ERROR: unexpected RDP listener; investigate before continuing' >&2
   exit 1
@@ -1251,17 +1266,13 @@ socket-bridge, TLS, and recovery diagnostics.
 
 #### Tutorials: Combined 1. Outcome
 
-Deploy two independent browser endpoints on one VM:
-
-- `https://NEKO_HOST` for a synchronized Firefox session with Neko audio/video;
-- `https://DESKTOP_HOST` for a persistent Ubuntu GNOME desktop through KasmVNC.
-
-One Caddy container terminates TLS for both names. Neko stays on its private Docker
-network except for WebRTC port 59000; KasmVNC stays on host loopback and reaches Caddy
-through a private Unix socket. Neko streams Firefox, while the viewing laptop may use
-Chrome, Edge, Firefox, or another compatible WebRTC client. Choose [Neko only](#tutorials-neko-only-deployment)
-or [desktop only](#tutorials-desktop-only-deployment) when appropriate. For this mode, install only
-the combined templates into `/opt/neko-cloud`; deployment modes are mutually exclusive.
+Deploy two endpoints on one VM: `https://NEKO_HOST` for Neko's synchronized Firefox and
+audio/video, and `https://DESKTOP_HOST` for persistent GNOME through KasmVNC. Caddy
+terminates TLS; Neko's HTTP backend stays on its private Docker network, with WebRTC on
+59000, while KasmVNC reaches Caddy through a private Unix socket. The viewer may use any
+compatible WebRTC browser. Use the [Neko-only tutorial](#tutorials-neko-only-deployment)
+or [desktop-only tutorial](#tutorials-desktop-only-deployment) for one service. Here,
+install only the combined templates; mode template sets are mutually exclusive.
 
 ```text
                          +--> Neko container:8080 (private Docker network)
@@ -1285,12 +1296,10 @@ Start with:
 - two distinct DNS `A` records pointing to that address;
 - a trusted workstation, an SSH client, and the VM's private key.
 
-Colocation can be cheaper and simpler, but creates one failure, maintenance, and
-resource-contention domain; use two VMs for different trust groups, independent
-maintenance, stronger isolation, or predictable performance. Firefox and pinned
-KasmVNC support AMD64 and ARM64, but the
-Neko Chrome image is not an ARM64 replacement. Review
-[compatibility](#reference-compatibility-and-support-matrix),
+Colocation shares failure, maintenance, and resource-contention domains; use separate VMs
+for distinct trust groups, stronger isolation, independent maintenance, or predictable
+performance. Firefox and pinned KasmVNC support AMD64 and ARM64, but Neko Chrome does not
+support ARM64. Review [compatibility](#reference-compatibility-and-support-matrix),
 [browser and CPU architecture](#design-browser-and-cpu-architecture), and
 [sizing and cost](#design-sizing-and-cost).
 
@@ -1309,10 +1318,9 @@ Neko Chrome image is not an ARM64 replacement. Review
 7. Configure cost, CPU, memory, disk, and egress alerts.
 8. Identify serial-console or disk-recovery access before installing GNOME.
 
-Follow the cloud-specific page for [OCI](#cloud-providers-oracle-cloud-infrastructure), [AWS](#cloud-providers-amazon-web-services),
-[GCP](#cloud-providers-google-cloud), [Azure](#cloud-providers-microsoft-azure), or a
-[generic VPS](#cloud-providers-generic-vps-or-another-cloud). Free quotas and stopped-instance charges differ;
-Ubuntu's lack of an OS licence fee does not make the infrastructure free.
+Follow the selected [provider guide](#cloud-providers); verify current free-quota and
+stopped-instance charges because Ubuntu's lack of an OS licence fee does not make
+infrastructure free.
 
 #### Tutorials: Combined 3. Variables and ports
 
@@ -1464,10 +1472,15 @@ sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
-. /etc/os-release
-CODENAME=${UBUNTU_CODENAME:-$VERSION_CODENAME}
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $CODENAME stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo rm -f /etc/apt/sources.list.d/docker.list
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
   docker-buildx-plugin docker-compose-plugin
@@ -1503,19 +1516,19 @@ systemctl get-default
 Expected: `multi-user.target`, with GDM masked. Do not modify netplan merely because
 desktop packages installed NetworkManager components.
 
-Install and verify the pinned KasmVNC 1.4.0 Noble package:
+Install and verify the pinned KasmVNC 1.5.0 Noble package:
 
 ```bash
 set -euo pipefail
 ARCH=$(dpkg --print-architecture)
 case "$ARCH" in
   arm64)
-    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_noble_1.4.0_arm64.deb'
-    KASM_SHA256='120d9462cb5e917cad91a23f6cb0b780c06f701def40e900b29f996979200638'
+    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.5.0/kasmvncserver_noble_1.5.0_arm64.deb'
+    KASM_SHA256='c9199cf4753208bfb69fd016a9780242bebfc43370cc38c97d61e90a3c783e04'
     ;;
   amd64)
-    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_noble_1.4.0_amd64.deb'
-    KASM_SHA256='12bac6014149c5fdee75f0d403785aaa3e5dd4ea222de73253a5d4181bc9567e'
+    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.5.0/kasmvncserver_noble_1.5.0_amd64.deb'
+    KASM_SHA256='f599fe02e2175b9817b6165f74a5d2bebdc73118dde9181ba3410963bed7ae1e'
     ;;
   *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
@@ -1523,6 +1536,8 @@ KASM_DEB=$(mktemp --suffix=.deb)
 trap 'rm -f -- "$KASM_DEB"' EXIT HUP INT TERM
 curl -fL "$KASM_URL" -o "$KASM_DEB"
 printf '%s  %s\n' "$KASM_SHA256" "$KASM_DEB" | sha256sum -c -
+sudo apt-get install -y ffmpeg
+ffmpeg -hide_banner -encoders 2>/dev/null | grep 'libx264' >/dev/null
 sudo apt-get install -y "$KASM_DEB"
 rm -f -- "$KASM_DEB"
 trap - EXIT HUP INT TERM
@@ -1531,11 +1546,11 @@ dpkg-query -W kasmvncserver
 
 ##### Tutorials: Combined: Install the combined-mode assets
 
-Use the same reviewed guide revision recorded earlier. Open the matching
-[copyable template appendix](#reference-copyable-deployment-templates), then save each
-shown block directly to its labeled runtime path. The commands below create and open
-those paths; paste only the selected mode's blocks. If the VM cannot open the guide,
-copy the reviewed text from the trusted workstation. Never mix mode templates.
+From the same reviewed revision, paste only the selected mode's labeled
+[templates](#reference-copyable-deployment-templates) and both
+[validation helpers](#reference-required-vm-validation-helpers-and-historical-repository-checker)
+into the paths below. If the VM cannot open the guide, copy from the trusted workstation.
+Never mix mode templates.
 
 **Context: VM**
 
@@ -1545,9 +1560,16 @@ sudo install -d -m 0755 -o root -g root /opt/neko-cloud
 sudoedit /opt/neko-cloud/compose.yaml
 sudoedit /opt/neko-cloud/Caddyfile
 sudoedit /opt/neko-cloud/.env
+sudoedit /usr/local/sbin/neko-cloud-preflight
+sudoedit /usr/local/sbin/neko-cloud-validate
 sudo chown root:root /opt/neko-cloud/compose.yaml /opt/neko-cloud/Caddyfile /opt/neko-cloud/.env
 sudo chmod 0644 /opt/neko-cloud/compose.yaml /opt/neko-cloud/Caddyfile
 sudo chmod 0600 /opt/neko-cloud/.env
+sudo chown root:root /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+sudo chmod 0755 /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+for helper in /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate; do
+  sudo bash -n "$helper"
+done
 
 sudo install -d -m 0700 -o desktop -g desktop /home/desktop/.vnc
 sudo install -d -m 0700 -o desktop -g desktop /home/desktop/.config/systemd/user
@@ -1598,6 +1620,7 @@ sudo test "$(sudo stat -c '%a %U:%G' /opt/neko-cloud/.env)" = '600 root:root'
 if sudo grep -Eq '=(PUBLIC_IP|UNIQUE_|DIFFERENT_|CHANGE_ME|replace-with)' \
   /opt/neko-cloud/.env; then
   echo 'STOP: resolve every placeholder before continuing' >&2
+  exit 1
 fi
 sudo /usr/local/sbin/neko-cloud-preflight combined /opt/neko-cloud
 ```
@@ -1677,6 +1700,7 @@ Keep the tested GNOME handover service, but do not configure or expose RDP:
 ```bash
 sudo systemctl unmask gnome-remote-desktop.service
 sudo systemctl enable --now gnome-remote-desktop.service
+sudo systemctl add-wants multi-user.target gnome-remote-desktop.service
 if sudo ss -lntup | grep -qE ':(3389)\b'; then
   echo 'ERROR: unexpected RDP listener; investigate before continuing' >&2
   exit 1
@@ -1931,17 +1955,12 @@ GNOME/D-Bus, KasmVNC, Caddy, and backup internals.
 ## Cloud providers
 
 
-Every tutorial needs one Ubuntu 24.04 VM with a stable public IPv4 address, outbound
-internet access, DNS, and provider firewall rules. Pick a provider section:
-
-- [Oracle Cloud Infrastructure](#cloud-providers-oracle-cloud-infrastructure)
-- [Amazon Web Services](#cloud-providers-amazon-web-services)
-- [Google Cloud](#cloud-providers-google-cloud)
-- [Microsoft Azure](#cloud-providers-microsoft-azure)
-- [Generic VPS or another cloud](#cloud-providers-generic-vps-or-another-cloud)
-
-The exact CLI builds, safe state handling, and billing caveats live in the
-[complete reference](#reference-6-common-cloud-prerequisites).
+Each mode needs an Ubuntu 24.04 VM with stable public IPv4, outbound internet/DNS, and matching
+provider firewall rules. Choose [OCI](#cloud-providers-oracle-cloud-infrastructure),
+[AWS](#cloud-providers-amazon-web-services), [GCP](#cloud-providers-google-cloud),
+[Azure](#cloud-providers-microsoft-azure), or a
+[generic VPS](#cloud-providers-generic-vps-or-another-cloud); exact CLI, safe-state, and
+billing details are in the [complete reference](#reference-6-common-cloud-prerequisites).
 
 ### Cloud providers: Mode-specific ingress
 
@@ -2133,7 +2152,7 @@ The repository supports two applications and three deployment modes.
 ```
 
 Caddy is the only public HTTP endpoint. Neko 8080 remains on a private Docker network.
-KasmVNC 8444 binds to loopback and reaches Caddy through a root-owned Unix socket bridge.
+KasmVNC TCP 8444 binds to loopback and reaches Caddy through a root-owned Unix socket bridge; its unused WebUDP socket remains firewall-blocked.
 Raw VNC and RDP are not part of this design.
 
 #### Design: Trust boundaries
@@ -2211,7 +2230,7 @@ The tested 1-GiB Azure Neko-only exception used `1024x576@20`, 1 GiB of containe
 memory, and 4 GiB of persistent disk-backed swap. It proves a constrained service can
 start; it does not turn disk into RAM or establish a durable production minimum.
 
-#### Design: Why â€œfree VMâ€ does not mean free deployment
+#### Design: Why “free VM” does not mean free deployment
 
 Provider allowances change and are shared across an account. Charges can come from:
 
@@ -2228,10 +2247,9 @@ create budget alerts, and test teardown. Alerts are not hard spending caps.
 
 #### Design: ARM64 versus AMD64
 
-ARM64 can be cost-effective and is supported by the pinned Neko Firefox and KasmVNC
-paths. Google Chrome's Neko image is AMD64-only; Firefox or Chromium is the portable ARM
-choice. Image digests are architecture-specific. See
-[browser and CPU architecture](#design-browser-and-cpu-architecture).
+ARM64 is supported by the pinned Neko Firefox and KasmVNC paths; Neko Chrome is AMD64-only.
+Verify whether each image pin is a multi-platform index or architecture-specific child
+digest. See [browser and CPU architecture](#design-browser-and-cpu-architecture).
 
 ### Design: Browser and CPU architecture
 
@@ -2268,7 +2286,7 @@ When moving between AMD64 and ARM64:
 - select a provider image and VM shape for the target architecture;
 - use the matching KasmVNC `.deb` and verified checksum;
 - pull the target platform's Neko/Caddy images;
-- resolve and record new platform-specific digests;
+- resolve and record new immutable repository/index digests;
 - restore only architecture-neutral configuration and user data;
 - rerun the complete acceptance tests.
 
@@ -2306,10 +2324,9 @@ sudo systemctl status kasmvnc-socat.service --no-pager
 - Neko: `https://<NEKO_FQDN>`
 - Desktop: `https://<DESKTOP_FQDN>`
 
-On a borrowed but trusted laptop, prefer Chrome Guest mode or a private window, do not
-save credentials, and close all related windows at the end. The desktop defaults to one
-exclusive viewer; a new viewer can replace the old viewer while the GNOME session stays
-alive.
+On a borrowed but trusted device, use Guest/Private mode, save no credentials, and close
+every related window. The desktop permits one viewer at a time; a replacement viewer
+inherits the persistent GNOME session.
 
 #### Operations: Monthly checklist
 
@@ -2328,36 +2345,63 @@ Treat every image, package, or desktop change as a controlled maintenance event.
 
 1. Snapshot or back up configuration and record current image digests.
 2. Read Neko and Caddy release notes.
-3. Change the pinned reference in `/opt/neko-cloud/compose.yaml` and the compatibility
-   table on a branch.
-4. Validate before touching the VM:
-
-   ```bash
-   git diff --check
-   ```
-
-5. On the VM, open the selected template appendix and save its reviewed Compose/Caddy files without
-   overwriting the runtime `.env`. Replace `MODE` with the selected deployment mode:
+3. In the existing **local workstation clone**, change the pinned reference and matching
+   compatibility text on a branch. The tutorials do not create a Git checkout on the VM.
+4. Commit the reviewed edits on that branch. Update the clean local clone, identify the
+   commit immediately before this maintenance change, and validate the explicit reviewed
+   range rather than relying on an empty working-tree diff:
 
    ```bash
    set -euo pipefail
-   MODE=MODE
-   case "$MODE" in neko|desktop|combined) ;; *) echo 'Set MODE' >&2; exit 1;; esac
-   cd "$HOME/neko-cloud-guide"
    if [ -n "$(git status --porcelain)" ]; then
      git status --short
      echo 'STOP: review or preserve local changes before updating' >&2
      exit 1
    fi
    git pull --ff-only
-   git rev-parse HEAD
+   REVIEW_BASE='<COMMIT_IMMEDIATELY_BEFORE_THIS_MAINTENANCE_CHANGE>'
+   REVIEW_HEAD=$(git rev-parse HEAD)
+   git rev-parse --verify "$REVIEW_BASE^{commit}" >/dev/null
+   git merge-base --is-ancestor "$REVIEW_BASE" "$REVIEW_HEAD"
+   [ "$REVIEW_BASE" != "$REVIEW_HEAD" ] || {
+     echo 'STOP: REVIEW_BASE and REVIEW_HEAD must identify a nonempty reviewed range' >&2
+     exit 1
+   }
+   git diff --check "$REVIEW_BASE..$REVIEW_HEAD"
+   git diff --stat "$REVIEW_BASE..$REVIEW_HEAD"
+   git log --oneline "$REVIEW_BASE..$REVIEW_HEAD"
+   printf 'Reviewed revision: %s\n' "$REVIEW_HEAD"
+   ```
+
+5. From that recorded revision, copy the selected Compose/Caddy blocks—and updated VM
+   helper blocks when they changed—to their labeled paths. On the VM, preserve the
+   runtime `.env`, take timestamped copies of every file being changed, then validate.
+   Replace `MODE`; set `UPDATE_HELPERS=1` only when both reviewed helper blocks will also
+   be pasted in this maintenance event:
+
+   ```bash
+   set -euo pipefail
+   MODE=MODE
+   UPDATE_HELPERS=0
+   case "$MODE" in neko|desktop|combined) ;; *) echo 'Set MODE' >&2; exit 1;; esac
+   case "$UPDATE_HELPERS" in 0|1) ;; *) echo 'Set UPDATE_HELPERS to 0 or 1' >&2; exit 1;; esac
+   STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+   sudo cp -a /opt/neko-cloud/compose.yaml "/opt/neko-cloud/compose.yaml.$STAMP.bak"
+   sudo cp -a /opt/neko-cloud/Caddyfile "/opt/neko-cloud/Caddyfile.$STAMP.bak"
    sudoedit /opt/neko-cloud/compose.yaml
    sudoedit /opt/neko-cloud/Caddyfile
+   if [ "$UPDATE_HELPERS" = 1 ]; then
+     for helper in /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate; do
+       sudo cp -a "$helper" "$helper.$STAMP.bak"
+       sudoedit "$helper"
+       sudo bash -n "$helper"
+     done
+   fi
    sudo /usr/local/sbin/neko-cloud-preflight "$MODE" /opt/neko-cloud
    ```
 
-   Stop if the checkout has unexpected local changes. Record the commit ID with the
-   maintenance record.
+   Record the local commit ID with the maintenance record. Never paste `.env.example`
+   over the live `.env`.
 
 6. Pull without replacing the running containers:
 
@@ -2375,15 +2419,17 @@ Treat every image, package, or desktop change as a controlled maintenance event.
    sudo docker compose --env-file .env logs --tail=100
    ```
 
-8. Run the mode-specific post-deployment validator from the checked-out repository;
+8. Run the installed mode-specific post-deployment validator;
    replace `MODE` with `neko`, `desktop`, or `combined`:
 
    ```bash
    sudo /usr/local/sbin/neko-cloud-validate MODE /opt/neko-cloud
    ```
 
-To roll back, restore the prior Compose/Caddy files or image digests and run `up -d`
-again. Do not delete old images until rollback has been proven unnecessary.
+To roll back, restore the prior Compose/Caddy files or image digests and, when
+`UPDATE_HELPERS=1` was used, restore both same-stamp helper backups and rerun `bash -n`
+on each before running `up -d` and the old validator. Do not delete old images or
+same-stamp backups until rollback has been proven unnecessary.
 
 #### Operations: Host desktop
 
@@ -2409,24 +2455,41 @@ Back up non-secret configuration separately from:
 - KasmVNC private key material;
 - cloud/SSH credentials.
 
+Archive membership is mode-specific:
+
+| Mode | Non-secret configuration | Secret archive |
+| --- | --- | --- |
+| Neko-only | Compose, Caddyfile, and installed preflight/validation helpers; include `.env.example`, Docker settings, and recorded manifests when the selected workflow created them | Runtime `.env` |
+| Desktop-only | Common gateway/helper files plus Kasm YAML, `xstartup`, desktop launcher, user unit, socket-bridge unit, and any created target inventory/manifest | Runtime `.env` plus `.kasmpasswd` |
+| Combined | Union of the files actually created by the Neko-only and desktop-only workflows | Runtime `.env` plus `.kasmpasswd` |
+
+Recreate Kasm's local placeholder certificate/key instead of exporting it. Verify archive
+membership against the selected row before encryption or extraction; do not copy the
+combined-mode member list unchanged into a single-mode backup.
+
 Encrypt the secret archive before it leaves a memory-backed temporary directory. Never
 place plaintext credentials in `/tmp`, an ordinary tarball, a Git repository, CI logs, or
 cloud-init output. Remove plaintext staging immediately on both success and failure.
 
 #### Operations: Minimum restore order
 
-1. Provision a clean Ubuntu 24.04 VM and attach a stable address/firewall.
-2. Install the pinned Docker/KasmVNC/desktop prerequisites.
-3. Recreate the locked non-sudo desktop account with a new machine-local UID.
-4. Restore non-secret files with explicit ownership and modes.
-5. Decrypt secrets in memory-backed storage and install them mode `0600`.
+1. Provision a clean Ubuntu 24.04 VM and attach the selected mode's stable address and
+   firewall contract.
+2. Install Docker and Caddy prerequisites; install KasmVNC/GNOME only for desktop or
+   combined mode.
+3. For desktop or combined mode, recreate the locked non-sudo desktop account with a new
+   machine-local UID.
+4. Restore the selected mode's non-secret files with explicit ownership and modes.
+5. Decrypt only that mode's allow-listed secrets in memory-backed storage and install
+   them mode `0600`.
 6. Replace the public IP/DNS values for the new host.
-7. Start KasmVNC, the socket bridge, Neko, and Caddy in dependency order.
-8. Rotate restored credentials, reboot, and run every acceptance test.
+7. Start only the selected services in dependency order.
+8. Rotate restored credentials, reboot, and run that mode's full acceptance tests.
 
-The deep reference contains exact allow-listed archive membership, regular-file checks,
-encrypted secret handling, and activation commands in
-[backup and restore](#reference-194-backups-and-restore-order).
+The [deep reference](#reference-194-backups-and-restore-order-combined-mode-exact-procedure)
+gives an exact combined-mode backup/restore procedure with allow-listed regular files,
+protected secrets, and activation commands. Derive and independently verify a reduced
+allow-list for single-mode restores.
 
 ### Operations: Rotate credentials
 
@@ -2458,8 +2521,8 @@ sudo chown "$DESKTOP_USER:$DESKTOP_USER" "/home/$DESKTOP_USER/.kasmpasswd"
 ```
 
 The command prompts for and replaces that user's password while retaining write
-permission. Do **not** add `-n` during rotation: in KasmVNC it means â€œdo not update the
-passwordâ€ and changes permissions only. Reuse the existing login name for an ordinary
+permission. Do **not** add `-n` during rotation: in KasmVNC it means “do not update the
+password” and changes permissions only. Reuse the existing login name for an ordinary
 password rotation. Renaming a login is a separate migration: deleting an entry requires
 an owner-authorized KasmVNC user, so do not add a new name and assume the old one can be
 removed with the command above. The Kasm password file is reversibly obfuscated, not
@@ -2489,9 +2552,8 @@ blindly purge GNOME, XFCE rollback, Docker, provider agents, firewall persistenc
 services, snapshots, or backups. On OCI, never flush Oracle's link-local/iSCSI rules and
 do not enable UFW.
 
-Optional printing, mDNS, modem, Bluetooth, RPC, SSSD, or VPN services may be disabled
-only after proving the VM does not use them. A service installed by a desktop metapackage
-is not automatically safe to remove.
+Disable optional printing, mDNS, modem, Bluetooth, RPC, SSSD, or VPN services only after
+proving they are unused; desktop-metapackage membership is not proof of safe removal.
 
 #### Operations: Complete provider teardown
 
@@ -2505,9 +2567,8 @@ After exporting and testing backups, inventory and deliberately delete or retain
 - firewall groups/NSGs, NICs, subnets, routes, gateways, and VPC/VCN/VNet;
 - log buckets, monitoring, secrets, service accounts, and budget alerts.
 
-Stopping a VM is not the same as terminating it, and terminating a VM does not guarantee
-that disks, addresses, snapshots, DNS, or networking stop billing. Finish by checking the
-provider's resource inventory and cost view after billing data has caught up.
+Stopping or terminating a VM may leave billable disks, addresses, snapshots, DNS, or
+networking; recheck provider inventory and costs after billing data catches up.
 
 ### Operations: Troubleshooting
 
@@ -2567,31 +2628,25 @@ reboot failures, and unresponsive cloud instances.
 
 ### Reference: Compatibility and support matrix
 
-This reference applies to the three independent deployment modes in this repository:
-Neko only, Ubuntu desktop only, and the combined single-VM stack. It records the tested
-baseline and the boundaries that matter when choosing a cloud, CPU architecture, remote
-client, or browser image. It is not a promise that every future upstream release remains
-compatible. Re-check the linked upstream sources before changing a pin.
-
-Baseline reviewed: **2026-07-19**.
+This matrix records the **2026-07-30** tested baseline and compatibility boundaries for
+Neko-only, desktop-only, and combined modes. It does not guarantee future upstream
+compatibility; recheck the linked sources before changing a pin.
 
 #### Reference: Tested version baseline
 
 | Component | Repository pin | AMD64 | ARM64 | Notes |
 |---|---:|:---:|:---:|---|
 | Host OS | Ubuntu Server 24.04 LTS | Yes | Yes | A minimal server image is expected; GNOME is added only for desktop modes. |
-| Docker Engine | Current Ubuntu 24.04 packages from Docker's official repository | Yes | Yes | The Compose v2 plugin is required. Do not use an unmaintained standalone Compose v1 binary. |
+| Docker Engine | Current Ubuntu 24.04 packages from Docker's official repository | Yes | Yes | Use the supported Docker Compose CLI plugin (v2 or v5) through `docker compose`; do not use the legacy standalone Compose v1 binary. |
 | Neko Firefox | `ghcr.io/m1k1o/neko/firefox:3.1.4` | Yes | Yes | Default and tested Neko image. The templates keep its browser profile ephemeral. |
 | Caddy | `caddy:2.11.4-alpine` | Yes | Yes | Current patched stable line at review time; persistent volumes retain ACME state. |
-| KasmVNC | `1.4.0-1` Noble package | Yes | Yes | Install the architecture-matched `.deb` and verify its SHA-256 before installation. |
+| KasmVNC | `1.5.0-1` Noble package | Yes | Yes | Install the architecture-matched `.deb`, install the FFmpeg runtime libraries used by the new video path, and verify its SHA-256 before installation. |
 | Desktop | Ubuntu GNOME 46/X11 | Yes | Yes | KasmVNC supplies the X11 display. GDM stays masked on the headless VM. |
 
-The official Caddy image is multi-platform. The repository pins a patch release rather
-than a moving `latest` or `2-alpine` tag. Caddy's
-[official Docker image](https://hub.docker.com/_/caddy) and
-[2.11.4 release](https://github.com/caddyserver/caddy/releases/tag/v2.11.4) are the
-authoritative sources for that pin. The image can later be replaced with an immutable
-platform-specific digest after it has been pulled and tested on the target architecture.
+Caddy's [official multi-platform image](https://hub.docker.com/_/caddy) and
+[2.11.4 release](https://github.com/caddyserver/caddy/releases/tag/v2.11.4) are
+authoritative. The repository uses a patch tag rather than a moving tag; production may
+promote it to a verified immutable repository/index digest after target-architecture testing.
 
 #### Reference: Deployment-mode matrix
 
@@ -2606,10 +2661,9 @@ platform-specific digest after it has been pulled and tested on the target archi
 | Neko media ports 59000 TCP/UDP | Yes | No | Yes |
 | Suggested minimum | 2 vCPU, 4 GiB | 2 vCPU, 8 GiB | 2 vCPU, 12 GiB |
 
-The resource figures are project recommendations for an interactive small deployment,
-not vendor guarantees. Browser workload, tab count, video resolution, codecs, concurrent
-viewers, and host contention can materially increase CPU and memory use. Avoid burstable
-shapes that are already CPU-credit constrained for sustained video workloads.
+These are workload-sensitive recommendations, not guarantees: tabs, resolution, codecs,
+viewers, and contention can outgrow memory or burstable CPU, especially during sustained
+video.
 
 #### Reference: Neko browser-image compatibility
 
@@ -2643,11 +2697,11 @@ The verified Noble packages are:
 
 | Architecture | Release asset | SHA-256 |
 |---|---|---|
-| ARM64 | `kasmvncserver_noble_1.4.0_arm64.deb` | `120d9462cb5e917cad91a23f6cb0b780c06f701def40e900b29f996979200638` |
-| AMD64 | `kasmvncserver_noble_1.4.0_amd64.deb` | `12bac6014149c5fdee75f0d403785aaa3e5dd4ea222de73253a5d4181bc9567e` |
+| ARM64 | `kasmvncserver_noble_1.5.0_arm64.deb` | `c9199cf4753208bfb69fd016a9780242bebfc43370cc38c97d61e90a3c783e04` |
+| AMD64 | `kasmvncserver_noble_1.5.0_amd64.deb` | `f599fe02e2175b9817b6165f74a5d2bebdc73118dde9181ba3410963bed7ae1e` |
 
 Use the [KasmVNC installation matrix](https://www.kasmweb.com/kasmvnc/docs/latest/install.html)
-and [KasmVNC 1.4.0 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.4.0)
+and [KasmVNC 1.5.0 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.5.0)
 to verify that these remain the correct Noble assets. Do not install an AMD64 package on
 ARM64 or vice versa.
 
@@ -2657,15 +2711,9 @@ from Git, and never reuse a Linux, cloud, Neko, or SSH password.
 
 #### Reference: Cloud and CPU compatibility
 
-The application layer is cloud-neutral. A target is compatible when it provides:
-
-- Ubuntu Server 24.04 for the selected CPU architecture;
-- a globally reachable static or reserved IPv4 address;
-- inbound TCP 80 and 443, plus TCP/UDP 59000 for modes containing Neko;
-- outbound HTTPS/DNS/NTP for packages, images, ACME, and normal browsing;
-- at least the mode's recommended memory and enough boot storage for images, packages,
-  logs, and desktop caches;
-- provider firewall rules and a host firewall that agree with the port matrix below.
+A compatible target supplies Ubuntu 24.04 for the selected architecture, stable public
+IPv4, the mode's inbound ports, outbound HTTPS/DNS/NTP, recommended memory and storage,
+and matching provider/host firewall policy.
 
 | Provider family | AMD64 examples | ARM64 examples | Compatibility notes |
 |---|---|---|---|
@@ -2690,10 +2738,9 @@ specific and change independently of this stack.
 | Mobile browsers | Limited | Limited | Useful for emergency viewing, not the primary keyboard/mouse workflow. |
 
 See KasmVNC's [client/browser requirements](https://www.kasmweb.com/kasmvnc/docs/master/clientside.html).
-On an untrusted or borrowed computer, use a private/guest browser session, do not save
-passwords, sign out, close every private window, and revoke/rotate credentials if the
-machine may have been compromised. Private browsing does not defend against malware or
-keyloggers on the laptop.
+On borrowed devices, use Guest/Private mode, save nothing, sign out, close every private
+window, and rotate credentials if compromise is possible; private browsing does not stop
+malware or keyloggers.
 
 #### Reference: Network and protocol compatibility
 
@@ -2705,7 +2752,7 @@ keyloggers on the laptop.
 | 59000/UDP | Required | Closed | Required | Public Neko media path. |
 | 59000/TCP | Required fallback | Closed | Required fallback | Public Neko media fallback. |
 | 8080/TCP | Closed | Closed | Closed | Neko backend exists only in its Compose network. |
-| 8444/TCP/UDP | Closed publicly | Closed publicly | Closed publicly | KasmVNC TCP is loopback-only; Caddy uses a Unix-socket bridge. |
+| 8444/TCP/UDP | Closed publicly | Closed publicly | Closed publicly | KasmVNC TCP is loopback-only; its 1.5 WebUDP socket may bind broadly but remains firewall-blocked and unused. Caddy uses a Unix-socket bridge. |
 | 5901/TCP | Closed | Closed | Closed | Raw VNC is not part of this design. |
 | 3389/TCP | Closed | Closed | Closed | GNOME RDP is not exposed even when its handover service is active. |
 | 443/UDP | Closed | Closed | Closed | Caddy is restricted to HTTP/1.1 and HTTP/2; HTTP/3 is disabled. |
@@ -2714,19 +2761,14 @@ Direct Neko media is not network-independent. Guest Wi-Fi or enterprise networks
 block both UDP and TCP 59000 can prevent media even though HTTPS loads. A TURN/TLS relay
 on commonly permitted ports is a separate design and is not included here.
 
-For desktop modes, public TLS terminates in Caddy. KasmVNC's HTTP WebSocket listener is
-bound to `127.0.0.1:8444`, then bridged to `/run/kasmvnc/kasm.sock`; never publish 8444
-through Compose or a cloud firewall. Standalone KasmVNC in this design does not promise
-host audio forwarding. Neko audio is a separate WebRTC path.
+In desktop modes, Caddy terminates TLS and reaches loopback-only KasmVNC through
+`/run/kasmvnc/kasm.sock`; never publish 8444, and do not expect host audio—Neko audio
+uses a separate WebRTC path.
 
 #### Reference: DNS and TLS compatibility
 
-Use ordinary DNS A records whenever possible:
-
-- `NEKO_HOST` points to `PUBLIC_IP` for Neko modes;
-- `DESKTOP_HOST` points to the same address for desktop modes;
-- combined mode requires two different names;
-- TCP 80 and 443 must reach Caddy during initial certificate issuance and renewal.
+Point each enabled mode's hostname to `PUBLIC_IP`—using two distinct names in combined
+mode—and keep TCP 80/443 reachable for Caddy certificate issuance and renewal.
 
 The Caddyfiles use environment placeholders supplied by Compose, so they contain no
 deployment-specific IP address or hostname. Caddy stores ACME account and certificate
@@ -2743,7 +2785,7 @@ across cloud providers and clients.
 Treat every version change as a new deployment candidate:
 
 1. Read the upstream release notes and image/package support matrix.
-2. Pull only the intended tag, record its architecture-specific digest, and scan it.
+2. Pull only the intended tag, record its immutable repository/index digest, and scan it.
 3. Re-run Compose and Caddy validation without printing resolved secrets.
 4. Test login roles, keyboard/mouse control, resize, clipboard, audio where applicable,
    Neko UDP and TCP media, reconnect behavior, and certificate renewal.
@@ -2757,32 +2799,15 @@ production pin once architecture-specific testing has completed.
 
 #### Reference: Primary upstream references
 
-- [Ubuntu 24.04 LTS releases](https://releases.ubuntu.com/noble/)
-- [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
-- [Docker Compose plugin](https://docs.docker.com/compose/install/linux/)
-- [Neko installation](https://neko.m1k1o.net/docs/v3/installation)
-- [Neko Docker images](https://neko.m1k1o.net/docs/v3/installation/docker-images)
-- [Neko configuration](https://neko.m1k1o.net/docs/v3/configuration)
-- [Neko reverse proxy setup](https://neko.m1k1o.net/docs/v3/reverse-proxy-setup)
-- [Caddy official image](https://hub.docker.com/_/caddy)
-- [Caddy 2.11.4](https://github.com/caddyserver/caddy/releases/tag/v2.11.4)
-- [KasmVNC installation/support matrix](https://www.kasmweb.com/kasmvnc/docs/latest/install.html)
-- [KasmVNC server configuration](https://www.kasmweb.com/kasmvnc/docs/master/serverside.html)
-- [KasmVNC client requirements](https://www.kasmweb.com/kasmvnc/docs/master/clientside.html)
-- [KasmVNC 1.4.0](https://github.com/kasmtech/KasmVNC/releases/tag/v1.4.0)
+The consolidated source list is in [authoritative references](#reference-23-authoritative-references).
 
 ### Reference: Complete multi-cloud Neko and Ubuntu browser-desktop reference
 
-Last verified: **2026-07-19**
+Last verified: **2026-07-30**
 
-This is the deep build, recovery, security, cost, and operations reference for a
-portable Neko shared browser and Ubuntu GNOME/KasmVNC web desktop. It covers Oracle
-Cloud Infrastructure (OCI), Amazon Web Services (AWS), Google Cloud Platform (GCP),
-Microsoft Azure, and generic Linux VM/VPS providers. The shorter tutorials elsewhere
-in this repository offer three supported modes: Neko-only, desktop-only, and combined.
-The command sequence in this deep reference builds the combined mode as the superset.
-For either single-service mode, use its short tutorial and port contract instead of
-copying combined-mode firewall or service steps.
+This deep reference covers multi-cloud build, recovery, security, cost, and operations.
+Its command sequence builds combined mode as the superset; for either single-service mode,
+follow that mode's short tutorial and port contract.
 
 Commands in this reference use `neko-cloud` as a **replaceable example resource prefix**.
 It is not a required host, account, or project name. Choose a lowercase project slug
@@ -2825,26 +2850,14 @@ substitutions, not omitted steps. Never commit `/opt/neko-cloud/.env`,
 
 #### Reference: 1. What this reference builds
 
-There are two separate remote applications on one Ubuntu 24.04 VM:
+This Ubuntu 24.04 ARM64/AMD64 VM exposes two browser applications:
 
-1. **Neko shared browser** â€” a Firefox browser running in the pinned
-   `ghcr.io/m1k1o/neko/firefox:3.1.4` container. Neko sends video/audio and accepts
-   keyboard/mouse input through a normal local web browser.
-2. **Full Ubuntu desktop** â€” Ubuntu's GNOME Shell, Yaru theme, Ubuntu Dock, Files,
-   Settings, and normal host applications, rendered in a KasmVNC virtual X11 display.
-   It is also used through a normal web browser.
+1. **Neko** — pinned `ghcr.io/m1k1o/neko/firefox:3.1.4` streams audio/video and shared
+   keyboard/mouse input at `https://<NEKO_FQDN>`.
+2. **Ubuntu desktop** — GNOME Shell, Yaru, Ubuntu Dock, Files, Settings, and host apps run
+   in KasmVNC virtual X11 at `https://<DESKTOP_FQDN>`.
 
-The resulting endpoints are:
-
-- Neko: `https://<NEKO_FQDN>`
-- Ubuntu GNOME: `https://<DESKTOP_FQDN>`
-- VM: Ubuntu 24.04 on supported ARM64 or AMD64 cloud compute
-
-Caddy terminates public TLS for both sites. Neko's web service on port 8080 and
-KasmVNC's web service on port 8444 are never directly exposed.
-
-The upstream projects describe Neko as a self-hosted virtual browser delivered through
-Docker and KasmVNC as web-native remote access. See the
+Caddy terminates TLS; Neko 8080 and KasmVNC 8444 remain private. See the
 [Neko introduction](https://neko.m1k1o.net/docs/v3/introduction) and
 [KasmVNC overview](https://www.kasmweb.com/kasmvnc/docs/latest/index.html).
 
@@ -2887,12 +2900,10 @@ For ARM64 deployments such as OCI A1:
 | Google Chrome | Yes | **No** | Cannot run natively on OCI A1 ARM64 |
 | Brave/Vivaldi | Yes | Yes | ARM availability exists, but validate required codecs/DRM |
 
-This matrix comes from Neko's
-[official Docker image and architecture documentation](https://neko.m1k1o.net/docs/v3/installation/docker-images).
-The same page says Chromium-based images need `shm_size: 2g` and run Chromium with
-`--no-sandbox` in the container. Firefox has fewer container requirements and is the
-safer fit for this small ARM VM. On an AMD64 VM, the Neko Google Chrome image can be
-selected deliberately, but it is not a drop-in option on ARM64.
+Neko's [official image matrix](https://neko.m1k1o.net/docs/v3/installation/docker-images)
+says Chromium images require `shm_size: 2g` and `--no-sandbox`. Firefox has fewer
+container requirements and is the safer small-ARM default; Google Chrome is available
+on AMD64, not ARM64.
 
 ##### Reference: GNOME versus XFCE
 
@@ -2905,12 +2916,17 @@ The desktop and combined modes run the real Ubuntu GNOME X11 session in KasmVNC.
 physical GDM/Wayland console. GDM is masked so a second invisible graphical session does
 not waste resources or compete with KasmVNC.
 
-##### Reference: KasmVNC versus XRDP
+##### Reference: KasmVNC versus NoMachine and XRDP
 
-XRDP requires an RDP client and normally opens TCP 3389. This project's browser-first
-flow uses KasmVNC behind Caddy instead.
-TCP 3389 remains closed. Do not install or expose XRDP unless RDP is a separate,
-explicit requirement.
+NoMachine Free Edition v9 is a personal, non-commercial native-client alternative with
+Linux/ARM, H.264, and one incoming connection, but connecting to its free server requires
+an installed NoMachine client/player; browser access requires an enterprise server
+product. XRDP is open source but likewise requires an RDP client, normally on TCP 3389.
+Either changes this browser-first design, so KasmVNC remains and 3389 stays closed; add
+either only as a separate path with its own network and acceptance design. See NoMachine's
+[FAQ](https://www.nomachine.com/support/faq),
+[supported systems](https://www.nomachine.com/support/supported-operating-systems-and-supported-applications),
+and [web-access documentation](https://www.nomachine.com/support/documents/getting-started-with-web-access).
 
 ##### Reference: Password-only baseline and stronger access options
 
@@ -2973,7 +2989,7 @@ the hostname resolves to the VM and ports 80/443 are reachable; see Caddy's
 
 ##### Reference: Practical capacity
 
-Neko's official quick start lists 4 cores and 3 GB RAM as â€œgood performanceâ€ for
+Neko's official quick start lists 4 cores and 3 GB RAM as “good performance” for
 1280x720@30 and explains that browser rendering plus real-time encoding is expensive.
 See [Neko Quick Start](https://neko.m1k1o.net/docs/v3/quick-start).
 
@@ -2983,7 +2999,7 @@ This combined Neko + full GNOME deployment should use:
 - **Practical minimum:** 2 vCPU, 8 GB RAM.
 - **Current working OCI allocation:** 2 OCPU, 12 GB RAM.
 - **Smoother concurrent use:** 4 vCPU, 16 GB RAM or more.
-- **Disk:** 50 GB minimum; 100â€“200 GB if desktop applications and downloads are kept.
+- **Disk:** 50 GB minimum; 100–200 GB if desktop applications and downloads are kept.
 
 CPU is usually the limiting factor during video encoding. Lower the Neko/Kasm resolution
 or frame rate before assuming that additional RAM fixes latency.
@@ -2993,15 +3009,15 @@ instance type, KasmVNC package, and Neko image must all support the same archite
 
 ##### Reference: Current free-offer comparison
 
-Cloud offers change. Treat this table as a **2026-07-19 snapshot**, verify it in the
+Cloud offers change. Treat this table as a **2026-07-30 snapshot**, verify it in the
 provider console before provisioning, and set a budget alert.
 
 | Provider | Current free/free-ish option | Suitable for the combined mode? | Main caveat |
 |---|---|---:|---|
 | OCI | A1 entitlement: 1,500 OCPU-hours + 9,000 GB-hours/month, equivalent to **2 OCPU/12 GB total** | Constrained but workable | Home region only; idle instances may be reclaimed; capacity can be unavailable |
-| AWS | New free plan uses credits; separate T4g trial offers up to 750 t4g.small hours/month through 2026-12-31 | Marginal at 2 GB | Compute trial does not automatically cover public IPv4, EBS, DNS, snapshots, or egress |
-| GCP | One e2-micro-equivalent monthly allowance in selected US regions, plus limited disk/egress | No | e2-micro is too small; ARM T2A/N4A/C4A is paid |
-| Azure | 750 hours/month B2pts v2 ARM for 12 months for eligible new accounts | No | Free ARM SKU has only 1 GB RAM; disk, IP, bandwidth, and overage rules are separate |
+| AWS | New free plan uses credits; separate T4g trial offers up to 750 `t4g.small` hours/month through 2026-12-31 | Marginal at 2 GB | The T4g trial does not itself cover IPv4, EBS, DNS, snapshots, or egress; by this snapshot, every pre-2025-07-15 account is beyond the legacy program's 12-month eligibility window |
+| GCP | Eligible non-preemptible `e2-micro` use up to the hours in the current month in `us-west1`, `us-central1`, or `us-east1`, plus 30 GB-month standard persistent disk and 1 GB North America egress | No | This is an `e2-micro`-only allowance, not equivalent-machine credit; Arm families are paid |
+| Azure | For eligible new customers, 750 hours/month **each** of B1s, B2pts v2 Arm, and B2ats v2 AMD for 12 months | No | The B2pts/B2ats shapes have only 1 GiB; Microsoft's India purchase page and global free-services footnote conflict on direct pay-as-you-go eligibility, so verify the offer in the signup flow; Azure China is a separate sovereign cloud |
 
 ###### Reference: OCI correction to old guidance
 
@@ -3024,9 +3040,11 @@ page. Always check **Limits, Quotas and Usage**, **Cost Analysis**, and the
 [OCI cost estimator](https://www.oracle.com/cloud/costestimator.html). A budget alert is
 not a hard spending cap.
 
-Ubuntu and the installed desktop packages do not add a separate Windows-style OS
-license, but compute, storage, backups, public IPs, DNS, and network traffic can still be
-billed. OCI A1 is Arm and does not support Windows; choose an Ubuntu AArch64 image.
+Ubuntu and the installed desktop packages add no separate OS licence. Compute,
+boot/block storage, backups, DNS, and outbound traffic beyond applicable OCI Always Free
+allowances can still be billed. OCI does not separately charge for an Oracle-assigned
+public IP address; resources and traffic using that address can still incur charges. OCI
+A1 is Arm and does not support Windows; choose an Ubuntu AArch64 image.
 
 ###### Reference: Other-provider free-offer sources
 
@@ -3071,7 +3089,7 @@ Apply least privilege at all applicable layers:
 
 Docker-published ports are reachable on every host interface by default. Docker creates
 NAT/FORWARD rules, and its documentation warns that published traffic is diverted
-before the INPUT chains used by UFW. Therefore, â€œUFW denies itâ€ is not protection for a
+before the INPUT chains used by UFW. Therefore, “UFW denies it” is not protection for a
 published container port. Publish only the four intentional mappings and enforce the
 provider firewall. See Docker's
 [port publishing](https://docs.docker.com/engine/network/port-publishing/) and
@@ -3193,21 +3211,16 @@ state-file implementation to prevent that common interrupted-shell failure mode.
 
 ##### Reference: 7.1 Choose the image, shape, and storage
 
-Create the VM in the tenancy's **home region** if it must consume Always Free A1
-entitlement. Select the Canonical Ubuntu 24.04 platform image whose architecture is
-`aarch64`, then select `VM.Standard.A1.Flex` and configure **2 OCPU / 12 GB RAM**.
-Use a 50 GB or larger boot volume. Increase it only for measured application/data needs;
-on OCI, remember that the documented 200 GB allowance is tenancy-wide storage.
-
-The old 4 OCPU/24 GB advice is no longer the documented allowance. Oracle's current
-[Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)
-page defines 1,500 A1 OCPU-hours and 9,000 GB-hours each month, equivalent to 2 OCPU and
-12 GB used continuously across the tenancy. It also documents 200 GB total boot/block
-storage across the account, idle-instance reclamation criteria, and possible capacity
-shortages. Confirm that the instance and volume show **Always Free eligible** before
-launching; the console, [cost estimator](https://www.oracle.com/cloud/costestimator.html),
+For Always Free A1, use the tenancy's **home region**, Canonical Ubuntu 24.04 `aarch64`,
+`VM.Standard.A1.Flex`, **2 OCPU / 12 GB RAM**, and a 50 GB or larger boot volume. The
+current 1,500 OCPU-hour, 9,000 GB-hour, and 200 GB boot/block allowances are tenancy-wide;
+old 4 OCPU/24 GB advice is stale, and reclamation/capacity caveats apply. Before launch,
+confirm the selected instance, image, and volume show **Always Free eligible** in the OCI
+Console. Check terms in Oracle's
+[official allowance](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm),
+use the [cost estimator](https://www.oracle.com/cloud/costestimator.html) before launch,
 and [Cost Analysis](https://docs.oracle.com/en-us/iaas/Content/Billing/Concepts/costanalysisoverview.htm)
-are authoritative for the tenancy.
+for tenancy usage and cost.
 
 Upload only the **public** SSH key at launch. On Windows, keep the private key outside
 the repository and restrict its ACL:
@@ -3224,47 +3237,33 @@ Never paste or upload the private key to the VM, a ticket, chat, or Git.
 
 ##### Reference: 7.2 Build the public network
 
-For a new deployment, create a VCN (for example `10.0.0.0/16`), a public subnet (for
-example `10.0.0.0/24`), and an enabled internet gateway. The subnet's effective route
-table needs `0.0.0.0/0` with the internet gateway as target. Assign a public IPv4 to the
-primary VNIC. A reserved public IP is preferable because an ephemeral address is lost
-when its VNIC/instance is terminated. Oracle documents the required pieces under
-[public IP addresses](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingpublicIPs.htm),
-[internet gateways](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingIGs.htm),
-and [route tables](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingroutetables.htm).
+For a new deployment, create a VCN such as `10.0.0.0/16`, public subnet such as
+`10.0.0.0/24`, enabled internet gateway, and `0.0.0.0/0` route to it. Give the primary
+VNIC a reserved public IPv4; an ephemeral address disappears with its VNIC/instance. See
+Oracle's [public-IP](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingpublicIPs.htm),
+[internet-gateway](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingIGs.htm),
+and [route-table](https://docs.oracle.com/en-us/iaas/Content/Network/Tasks/managingroutetables.htm) docs.
 
-Use one application NSG attached to the VM's primary VNIC, with stateful ingress rules
-matching the port contract. Security-list and NSG rules are a **union**: an NSG cannot
-deny a port already allowed by the subnet security list. Remove broad duplicate rules
-from the security list, and keep SSH limited to `<ADMIN_CIDR>`. See Oracle's
+Attach one application NSG with mode-specific stateful ingress. Security-list and NSG
+allows form a **union**, so keep SSH restricted and remove broad security-list rules.
+Before changing a shared list, enumerate every associated subnet/VNIC; if it cannot be
+safely tightened, move this VM to a dedicated subnet. See Oracle's
 [security-rule behavior](https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/securityrules.htm).
 
-Before changing an existing security list, enumerate every subnet and VNIC that uses it.
-Security-list changes affect every VNIC in each associated subnet and can lock out or
-expose unrelated instances. Prefer the dedicated subnet/base list created below; if a
-broad list is shared and cannot be safely tightened, move this VM to a dedicated subnet
-instead of treating an NSG as a deny layer.
-
-If the VNIC/private IP uses a per-resource route table, audit that effective route rather
-than assuming the subnet table wins. If OCI Zero Trust Packet Routing security
-attributes are configured, the applicable ZPR policy must also allow the traffic. A NAT
-gateway supports outbound connections from private resources; it is not a substitute
-for the public IP/internet-gateway path required by this direct inbound design.
+Audit any per-resource VNIC/private-IP route table and applicable Zero Trust Packet
+Routing policy. A NAT gateway supplies outbound connectivity; it does not replace this
+design's public-IP/internet-gateway inbound path.
 
 ###### Reference: Cloud Shell: create the OCI public network from zero
 
-The console's **Automatically assign public IPv4** control is disabled when the selected
-subnet prohibits public IPs, or when no suitable VCN/subnet has been selected. Do not
-fight the disabled control. Create/select a public subnet whose
-`prohibit-public-ip-on-vnic` value is false, then launch the instance into it.
+A disabled **Automatically assign public IPv4** control means the selected subnet
+prohibits public IPs or no suitable subnet is selected; use a public subnet with
+`prohibit-public-ip-on-vnic=false`.
 
-In a fresh OCI Cloud Shell session, variables from an old session do not exist. The
-creation block is **not** safe to rerun after a partial success: doing so can create
-duplicate resources and consume quota. On the first run, persist the non-secret OCIDs in
-the control file below. If interrupted, rediscover the already-created objects by display
-name/console and reconstruct the file, or deliberately delete the verified partial
-resources before restarting. Copy OCIDs from the console; never type them from a
-screenshot:
+Cloud Shell loses session variables, and the creation block is not idempotent. Persist
+its non-secret OCIDs on the first run. After interruption, rediscover objects by display
+name/console and rebuild the control file, or deliberately delete verified partial
+resources before restarting. Copy OCIDs from the console, never a screenshot:
 
 ```bash
 set -euo pipefail
@@ -3355,7 +3354,8 @@ existing VCN/subnet, the application NSG, Canonical Ubuntu 24.04 aarch64,
 address**, launch, and assign a new reserved public IP to the primary private IP with the
 post-launch block in section 7.5. This avoids first creating an ephemeral address that
 must be deleted and replaced. Do not launch until the NSG contains restricted SSH plus
-the four public service rules.
+the selected mode's public service rules: two for desktop-only, or four for Neko-only
+and combined mode.
 
 In every later/new Cloud Shell session, restore those variables with
 `. "$HOME/neko-cloud-oci-network.env"`; this directly prevents the empty `SUBNET_ID`/
@@ -3414,7 +3414,8 @@ sudo iptables -L INPUT -n --line-numbers
 ```
 
 This deployment does not need host-native public 8080, 8444, or 3389. Do not add them.
-KasmVNC remains on `127.0.0.1:8444`; its UDP listener remains blocked.
+KasmVNC TCP remains on `127.0.0.1:8444`; any KasmVNC WebUDP socket on 8444 remains
+blocked by both the OCI rules and the preserved host INPUT policy.
 
 ##### Reference: 7.4 Reproducible OCI Cloud Shell network audit
 
@@ -3506,9 +3507,11 @@ delete them from Cloud Shell when the audit is done.
 
 ##### Reference: 7.5 Create the OCI application NSG
 
-The console is least error-prone: VCN -> Network Security Groups -> Create, add the five
-rules from section 3, then attach the NSG to the primary VNIC. The following CLI example
-creates the NSG and rules. Replace the administrator CIDR before running it:
+The console is least error-prone: VCN -> Network Security Groups -> Create, add the rules
+from [mode-specific ingress](#cloud-providers-mode-specific-ingress), then attach the NSG
+to the primary VNIC. Desktop-only uses three ingress rules; Neko-only and combined use
+five. The following CLI example
+creates the NSG and rules. Replace the mode and administrator CIDR before running it:
 
 ```bash
 set -euo pipefail
@@ -3520,10 +3523,14 @@ NETWORK_ENV="$HOME/neko-cloud-oci-network.env"
 . "$NETWORK_ENV"
 : "${COMPARTMENT_ID:?missing COMPARTMENT_ID}"
 : "${VCN_ID:?missing VCN_ID}"
+MODE='<neko|desktop|combined>'
 ADMIN_CIDR='<ADMIN_PUBLIC_IP>/32'
+case "$MODE" in neko|desktop|combined) ;; *) echo 'Set MODE.' >&2; exit 1 ;; esac
 case "$ADMIN_CIDR" in *'<'*|'0.0.0.0/0')
   echo 'Replace ADMIN_CIDR with one trusted public IPv4 /32.' >&2; exit 1 ;;
 esac
+WITH_NEKO=false
+case "$MODE" in neko|combined) WITH_NEKO=true ;; esac
 
 if [ -n "${NSG_ID:-}" ]; then
   ACTUAL_NSG_VCN=$(oci network nsg get --nsg-id "$NSG_ID" \
@@ -3538,24 +3545,27 @@ else
     --query data.id --raw-output)
 fi
 
-jq -n --arg admin "$ADMIN_CIDR" '[
+jq -n --arg admin "$ADMIN_CIDR" --argjson with_neko "$WITH_NEKO" '
+[
   {direction:"INGRESS",protocol:"6",source:$admin,sourceType:"CIDR_BLOCK",
    tcpOptions:{destinationPortRange:{min:22,max:22}}},
   {direction:"INGRESS",protocol:"6",source:"0.0.0.0/0",sourceType:"CIDR_BLOCK",
    tcpOptions:{destinationPortRange:{min:80,max:80}}},
   {direction:"INGRESS",protocol:"6",source:"0.0.0.0/0",sourceType:"CIDR_BLOCK",
-   tcpOptions:{destinationPortRange:{min:443,max:443}}},
+   tcpOptions:{destinationPortRange:{min:443,max:443}}}
+] + (if $with_neko then [
   {direction:"INGRESS",protocol:"6",source:"0.0.0.0/0",sourceType:"CIDR_BLOCK",
    tcpOptions:{destinationPortRange:{min:59000,max:59000}}},
   {direction:"INGRESS",protocol:"17",source:"0.0.0.0/0",sourceType:"CIDR_BLOCK",
    udpOptions:{destinationPortRange:{min:59000,max:59000}}}
-]' > nsg-rules.json
+] else [] end)
+' > nsg-rules.json
 
 jq . nsg-rules.json
 oci network nsg rules list --nsg-id "$NSG_ID" --all > nsg-rules.before.json
 
 # Compare only security-relevant fields and add only absent rules. This makes a rerun
-# safe after interruption instead of duplicating all five rules.
+# safe after interruption instead of duplicating the selected mode's rules.
 jq --slurpfile desired nsg-rules.json '
   def tuple: {
     direction: .direction,
@@ -3650,8 +3660,10 @@ oci network vnic update --vnic-id "$VNIC_ID" \
 oci network vnic get --vnic-id "$VNIC_ID" --query 'data."nsg-ids"'
 ```
 
-After attachment, inspect both NSG and subnet security-list rules. Remove any security
-list allow for 8080, 8444, 3389, or overly broad SSH.
+After attachment, inspect the union of every attached NSG and subnet security-list rule.
+Remove any allow for 8080, 8444, 5901, 3389, or overly broad SSH; for desktop-only, also
+remove TCP and UDP 59000 allows. OCI combines the effective security-list and NSG rules,
+so a permissive rule in either layer defeats the selected mode's public-port contract.
 
 If this is the fresh path, set `INSTANCE_ID` after launch, discover its primary VNIC and
 private IP, then create and assign a **reserved** public IP. The VM remains unreachable
@@ -3725,27 +3737,27 @@ files should not accumulate.
 
 ##### Reference: 8.1 Cost and instance choice
 
-Use Ubuntu 24.04 ARM64 on `t4g.large` (2 vCPU/8 GiB) for a practical build, or
-`t4g.medium` (2 vCPU/4 GiB) for a constrained test. `t4g.small` has 2 GiB and is
-marginal for Neko plus GNOME. On AMD64 use a comparable `t3.large`/`t3a.large` and the
-AMD64 Ubuntu image. AWS lists current T4g sizes on the
+Use Ubuntu 24.04 ARM64 on `t4g.large` (2 vCPU/8 GiB) for a practical build;
+`t4g.medium` (2 vCPU/4 GiB) is constrained, and `t4g.small` (2 GiB) is marginal for Neko
+plus GNOME. On AMD64 use a comparable `t3.large`/`t3a.large`. See the
 [T4g page](https://aws.amazon.com/ec2/instance-types/t4/).
 
-AWS accounts created on or after 2025-07-15 use a credit-based free plan with a time limit;
-the separate t4g.small trial is currently advertised through 2026-12-31. Neither
-promise makes this whole stack free: EBS, snapshots, DNS, public IPv4, and data transfer
-can be charged. Review the [EC2 free-tier rules](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html),
-[AWS free terms](https://aws.amazon.com/free/terms/), and
-[VPC pricing](https://aws.amazon.com/vpc/pricing/). A public IPv4 is currently billed
-hourly even while attached. Configure AWS Budgets, remembering alerts are not hard caps.
+Accounts created on or after 2025-07-15 use a credit-based Free Tier; the separate
+`t4g.small` trial is advertised through 2026-12-31. That trial covers only its compute
+offer; EBS, snapshots, DNS, data transfer, and public IPv4 have separate terms. New-plan
+credits may offset eligible charges under current offer terms. The legacy public-IPv4
+benefit lasted 12 months and is expired for all pre-cutoff accounts by this 2026-07-30
+snapshot; newer accounts use credits. Treat IPv4 as billable unless the console shows
+applicable credit; AWS currently lists USD 0.005 per address-hour in use or idle. Review
+the [EC2 rules](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html),
+[free terms](https://aws.amazon.com/free/terms/), and
+[VPC pricing](https://aws.amazon.com/vpc/pricing/). Budgets alert; they do not cap spend.
 
-T4g is burstable and launches in `unlimited` mode by default. Sustained video encoding
-above its CPU baseline can consume surplus credits and add charges; Standard mode avoids
-surplus-credit charges but can throttle when credits run out. Monitor
-`CPUCreditBalance`, `CPUSurplusCreditBalance`, and `CPUSurplusCreditsCharged`. For
-predictable continuous encoding, use a paid fixed-performance Graviton family such as
-M7g (or its current regional successor) after checking availability and price. See AWS's
-[Unlimited-mode documentation](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode.html).
+T4g defaults to `unlimited`; sustained encoding above baseline can incur surplus-credit
+charges. Standard mode avoids those charges but can throttle. Monitor `CPUCreditBalance`,
+`CPUSurplusCreditBalance`, and `CPUSurplusCreditsCharged`; for predictable continuous
+encoding, price a fixed-performance Graviton family such as M7g or its regional successor.
+See the [Unlimited-mode documentation](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode.html).
 
 ##### Reference: 8.2 Create a dedicated public VPC with AWS CLI
 
@@ -3846,6 +3858,8 @@ Create an application security group. AWS security groups are stateful, so retur
 traffic is automatic:
 
 ```bash
+MODE='<neko|desktop|combined>'
+case "$MODE" in neko|desktop|combined) ;; *) echo 'Set MODE.' >&2; exit 1 ;; esac
 SG_ID=$(aws ec2 create-security-group --group-name neko-cloud-web \
   --description 'Neko and KasmVNC web gateway' --vpc-id "$VPC_ID" \
   --query GroupId --output text)
@@ -3855,10 +3869,12 @@ aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
   --protocol tcp --port 80 --cidr 0.0.0.0/0
 aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
   --protocol tcp --port 443 --cidr 0.0.0.0/0
-aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
-  --protocol tcp --port 59000 --cidr 0.0.0.0/0
-aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
-  --protocol udp --port 59000 --cidr 0.0.0.0/0
+if [ "$MODE" != desktop ]; then
+  aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
+    --protocol tcp --port 59000 --cidr 0.0.0.0/0
+  aws ec2 authorize-security-group-ingress --group-id "$SG_ID" \
+    --protocol udp --port 59000 --cidr 0.0.0.0/0
+fi
 ```
 
 Resolve Canonical's current Ubuntu 24.04 ARM64 AMI through its official SSM parameter,
@@ -3908,25 +3924,19 @@ configured. Do not expose 8080, 8444, or 3389 in the security group or network A
 
 ##### Reference: 9.1 Cost and machine choice
 
-Google Cloud's free Compute Engine allowance is one `e2-micro` in selected US regions,
-with limited standard disk and egress. It is x86, has only 1 GB RAM, and is not suitable
-for this combined stack. See the current
-[Google Cloud Free Tier](https://cloud.google.com/free/docs/free-cloud-features) and
-[E2 machine types](https://cloud.google.com/compute/docs/general-purpose-machines).
-Streaming can consume the small free egress allowance quickly; budgets generate alerts,
-not a hard spending cap.
+Google Cloud's free allowance is one x86 `e2-micro` with 1 GB RAM in selected US regions,
+plus limited standard disk and egress—too small for this combined stack. Streaming can
+consume the egress allowance quickly, and budgets only alert. See the
+[Free Tier](https://cloud.google.com/free/docs/free-cloud-features) and
+[E2 types](https://cloud.google.com/compute/docs/general-purpose-machines).
 
-Use a paid ARM VM such as `t2a-standard-2` (2 vCPU/8 GB) in a supported region, or
-`c4a-standard-2` where C4A is available, including supported Mumbai zones. Prefer 4
-vCPU/16 GB for simultaneous Neko and GNOME use. Confirm live availability under
-[regions and zones](https://cloud.google.com/compute/docs/regions-zones) because ARM
-families are not offered in every zone. The official Ubuntu ARM64 image family is
-`ubuntu-2404-lts-arm64` in project `ubuntu-os-cloud`; see
-[OS details](https://cloud.google.com/compute/docs/images/os-details).
-
-External IPv4 and outbound traffic are billable. Reserve the address because a changed
-IP breaks both DNS and Neko `nat1to1`. Review current
-[VPC pricing](https://cloud.google.com/vpc/pricing/) and create a Billing budget/alert.
+Use paid `t2a-standard-2` (2 vCPU/8 GB) in a supported region or `c4a-standard-2` where
+C4A is available, including supported Mumbai zones; prefer 4 vCPU/16 GB for simultaneous
+Neko and GNOME. Confirm [regional availability](https://cloud.google.com/compute/docs/regions-zones).
+The official Ubuntu ARM64 family is `ubuntu-2404-lts-arm64` in `ubuntu-os-cloud`; see
+[OS details](https://cloud.google.com/compute/docs/images/os-details). External IPv4 and
+outbound traffic are billable. Reserve the address because a change breaks DNS and Neko
+`nat1to1`; review [VPC pricing](https://cloud.google.com/vpc/pricing/) and create a budget.
 
 ##### Reference: 9.2 VPC, static address, and firewall
 
@@ -3939,7 +3949,11 @@ PROJECT_ID='<GCP_PROJECT_ID>'
 REGION='<GCP_REGION>'
 ZONE='<GCP_ZONE>'
 MACHINE_TYPE='<t2a-standard-2-or-c4a-standard-2>'
+MODE='<neko|desktop|combined>'
 ADMIN_CIDR='<ADMIN_PUBLIC_IP>/32'
+case "$MODE" in neko|desktop|combined) ;; *) echo 'Set MODE.' >&2; exit 1 ;; esac
+PUBLIC_RULES='tcp:80,tcp:443'
+if [ "$MODE" != desktop ]; then PUBLIC_RULES="$PUBLIC_RULES,tcp:59000,udp:59000"; fi
 
 gcloud config set project "$PROJECT_ID"
 gcloud services enable compute.googleapis.com
@@ -3956,7 +3970,7 @@ gcloud compute firewall-rules create neko-cloud-ssh \
   --target-tags=neko-cloud-remote
 gcloud compute firewall-rules create neko-cloud-public-web \
   --network=neko-cloud-vpc --direction=INGRESS --priority=1000 \
-  --action=ALLOW --rules=tcp:80,tcp:443,tcp:59000,udp:59000 \
+  --action=ALLOW --rules="$PUBLIC_RULES" \
   --source-ranges=0.0.0.0/0 --target-tags=neko-cloud-remote
 ```
 
@@ -4043,23 +4057,28 @@ Neko design.
 
 ##### Reference: 10.1 Cost and VM choice
 
-Azure's eligible-new-account ARM offer includes B2pts v2 hours for 12 months, but that
-SKU has only 1 GiB RAM and is below this project's normal minimum. A distinct AMD64
-`Standard_B2ats_v2` 2-vCPU/1-GiB VM completed the sanitized Neko-only infrastructure
-case study only with a reduced `1024x576@20` profile and 4 GiB of persistent swap. Do
-not assume either 1-GiB SKU is free, comfortable, or suitable for desktop/combined use.
-Use `Standard_B2pls_v2` (2 vCPU/4 GiB) for a constrained ARM test or
-`Standard_B2ps_v2` (2 vCPU/8 GiB) for a practical ARM minimum.
-Review the [Bpsv2 table](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/bpsv2-series),
-[Azure free account](https://azure.microsoft.com/en-us/free/), and
-[free service limits](https://azure.microsoft.com/en-us/pricing/free-services/).
-Managed disk, snapshots, Standard public IP, bandwidth, DNS, and usage beyond an offer
-can be billed. Create a Cost Management budget and alert; it does not stop resources.
+Azure's 12-month new-customer offer lists 750 hours/month each of B1s, B2pts v2 (Arm),
+and B2ats v2 (AMD). Both B2 shapes are 2-vCPU/1-GiB burstable and below this project's
+normal minimum. The sanitized Neko-only case ran `Standard_B2ats_v2` only at
+`1024x576@20` with 4 GiB persistent swap; neither is comfortable for desktop/combined.
+Use `Standard_B2pls_v2` (2 vCPU/4 GiB) for a constrained Arm test or
+`Standard_B2ps_v2` (2 vCPU/8 GiB) as the practical Arm minimum.
 
-The official ARM image URN is `Canonical:ubuntu-24_04-lts:server-arm64:<version>`.
-ARM64 requires a compatible `p`-series size and currently uses `Standard` security type,
-not Trusted Launch. Confirm current regional availability and the Canonical
-[Azure Ubuntu image guidance](https://documentation.ubuntu.com/azure/azure-how-to/instances/find-ubuntu-images/).
+For India, the localized [account page](https://azure.microsoft.com/en-in/pricing/purchase-options/azure-account)
+advertises the offer, while the global [free-services footnote](https://azure.microsoft.com/en-us/pricing/free-services/)
+excludes direct pay-as-you-go sign-ups in India and China. Treat checkout/subscription
+records as authoritative; global terms separately exclude sovereign Azure China. See the
+[Bpsv2 table](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/bpsv2-series).
+Managed disk, snapshots, Standard public IP, bandwidth, DNS, and overages can be billed;
+budget alerts do not stop resources.
+
+The Ubuntu 24.04 Arm64 URN is `Canonical:ubuntu-24_04-lts:server-arm64:<version>`. The
+Canonical Arm64/Bpsv2 path below currently requires `Standard` security type, but this is
+not a blanket Arm64 limitation: use Trusted Launch when the regional SKU capabilities
+and image `SecurityType` both support it. See Canonical's
+[Azure image guidance](https://documentation.ubuntu.com/azure/azure-how-to/instances/find-ubuntu-images/)
+and Microsoft's
+[Trusted Launch FAQ](https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-faq).
 
 ##### Reference: 10.2 Resource group, VNet, NSG, and static IP
 
@@ -4070,7 +4089,11 @@ deployment can be inventoried and, only when intentionally retired, removed as a
 set -euo pipefail
 LOCATION='<AZURE_REGION>'
 RESOURCE_GROUP='neko-cloud-rg'
+MODE='<neko|desktop|combined>'
 ADMIN_CIDR='<ADMIN_PUBLIC_IP>/32'
+case "$MODE" in neko|desktop|combined) ;; *) echo 'Set MODE.' >&2; exit 1 ;; esac
+PUBLIC_TCP_PORTS=(80 443)
+if [ "$MODE" != desktop ]; then PUBLIC_TCP_PORTS+=(59000); fi
 
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 az network vnet create --resource-group "$RESOURCE_GROUP" \
@@ -4090,12 +4113,14 @@ az network nsg rule create --resource-group "$RESOURCE_GROUP" \
   --nsg-name neko-cloud-nsg --name AllowPublicTcp --priority 110 \
   --direction Inbound --access Allow --protocol Tcp \
   --source-address-prefixes Internet --source-port-ranges '*' \
-  --destination-address-prefixes '*' --destination-port-ranges 80 443 59000
-az network nsg rule create --resource-group "$RESOURCE_GROUP" \
-  --nsg-name neko-cloud-nsg --name AllowWebRtcUdp --priority 120 \
-  --direction Inbound --access Allow --protocol Udp \
-  --source-address-prefixes Internet --source-port-ranges '*' \
-  --destination-address-prefixes '*' --destination-port-ranges 59000
+  --destination-address-prefixes '*' --destination-port-ranges "${PUBLIC_TCP_PORTS[@]}"
+if [ "$MODE" != desktop ]; then
+  az network nsg rule create --resource-group "$RESOURCE_GROUP" \
+    --nsg-name neko-cloud-nsg --name AllowWebRtcUdp --priority 120 \
+    --direction Inbound --access Allow --protocol Udp \
+    --source-address-prefixes Internet --source-port-ranges '*' \
+    --destination-address-prefixes '*' --destination-port-ranges 59000
+fi
 
 az network nic create --resource-group "$RESOURCE_GROUP" --name neko-cloud-nic \
   --vnet-name neko-cloud-vnet --subnet neko-cloud-public \
@@ -4109,20 +4134,18 @@ and NIC NSGs both apply. See
 
 ##### Reference: 10.2.1 Existing Azure VM and one-off CLI
 
-For an existing VM, UFW and listening sockets can be correct while Azure still drops
-ACME and WebRTC traffic. Discover whether the effective NSG is attached to the primary
-NIC or its subnet before adding the exact rules above. Prefer Azure CLI on a trusted
-workstation or Azure Cloud Shell.
+Azure can block ACME/WebRTC even when UFW and listeners are correct. Identify every
+effective NIC and subnet NSG before adding rules; prefer Azure CLI on a trusted workstation
+or Cloud Shell.
 
-If neither is available, Microsoft's official Azure CLI image can run temporarily on
-the already trusted Docker host. Complete device authorization yourself, never record
-the device code, account output, or token, and do not mount SSH keys, a persistent
-`.azure` directory, or the Docker socket. Use `--rm`, run `az logout`, and remove
-the exact unused CLI image after verifying the NSG.
+Otherwise run Microsoft's official Azure CLI image temporarily on the trusted Docker
+host. Complete device authorization yourself; never record its code, account output, or
+token, and never mount SSH keys, persistent `.azure` state, or the Docker socket. Use
+`--rm`, log out, and remove the exact unused image after verification.
 
 ```bash
 # Host:
-sudo docker run --rm -it mcr.microsoft.com/azure-cli:2.87.0-azurelinux3.0 sh
+sudo docker run --rm -it mcr.microsoft.com/azure-cli:2.88.0-azurelinux3.0 sh
 
 # Temporary container:
 az login --use-device-code --output none
@@ -4135,22 +4158,47 @@ az network vnet subnet show --ids '<SUBNET_ID>' \
   --query 'networkSecurityGroup.id' -o tsv
 ```
 
-Use the first nonempty NIC/subnet NSG, inspect existing priorities, and apply the two
-rule definitions from section 10.2 to it. After verification, run `az logout`, exit the
-container, and remove the exact unused image:
+Inspect every attached NIC/subnet NSG and its priorities. Required traffic must pass both
+layers: add mode-specific allows to each, or detach one only after reviewing its other
+protections. Desktop permits TCP 80/443 and keeps 59000 closed; Neko modes additionally
+permit TCP/UDP 59000. Then run `az logout`, exit, and remove the exact unused image:
 
 ```bash
-sudo docker image rm mcr.microsoft.com/azure-cli:2.87.0-azurelinux3.0
+sudo docker image rm mcr.microsoft.com/azure-cli:2.88.0-azurelinux3.0
 ```
 
-Re-test 80/443/59000 externally and confirm 8080/3389 remain closed. Caddy retries ACME
-automatically; restarting only Caddy is acceptable when an immediate retry is needed.
+Re-test 80/443 externally in every mode. Test TCP/UDP 59000 only for Neko or combined;
+for desktop, confirm 59000 remains closed. In every mode confirm 8080, 8444, and 3389
+remain externally closed. Caddy retries ACME automatically; restarting only Caddy is
+acceptable when an immediate retry is needed.
 
 ##### Reference: 10.3 Resolve the image and launch
 
 Resolve `latest` to a concrete version so the manifest is reproducible:
 
 ```bash
+AZ_CLI_VERSION=$(az version --query '"azure-cli"' --output tsv)
+MIN_AZ_CLI_VERSION=2.86.0
+[ "$(printf '%s\n' "$MIN_AZ_CLI_VERSION" "$AZ_CLI_VERSION" | sort -V | head -n 1)" = "$MIN_AZ_CLI_VERSION" ] || {
+  echo "Azure CLI $MIN_AZ_CLI_VERSION or newer is required for --security-type Standard; found $AZ_CLI_VERSION" >&2
+  exit 1
+}
+
+# Canonical notes that subscriptions may need this feature registered before launching
+# this Standard-security ARM64 image. Registration is idempotent but can take minutes.
+az feature register --namespace Microsoft.Compute --name UseStandardSecurityType
+for attempt in {1..60}; do
+  FEATURE_STATE=$(az feature show --namespace Microsoft.Compute \
+    --name UseStandardSecurityType --query properties.state --output tsv)
+  [ "$FEATURE_STATE" = Registered ] && break
+  sleep 10
+done
+[ "$FEATURE_STATE" = Registered ] || {
+  echo 'UseStandardSecurityType did not reach Registered state within 10 minutes.' >&2
+  exit 1
+}
+az provider register --namespace Microsoft.Compute --wait
+
 IMAGE_VERSION=$(az vm image list --location "$LOCATION" --all \
   --publisher Canonical --offer ubuntu-24_04-lts --sku server-arm64 \
   --query 'sort_by([], &version)[-1].version' --output tsv)
@@ -4175,10 +4223,11 @@ ssh azureuser@"$PUBLIC_IP"
 Use `azureuser` as `ADMIN_USER` in later commands, or deliberately create another user.
 Do not assume every cloud's login name is `ubuntu`.
 
-Azure changed new-VNet outbound behavior after 2026-03-31: workloads should use an
-explicit outbound method. The NIC's Standard public IP in this design is explicit
-inbound/outbound connectivity. If policy disallows it, use NAT Gateway for outbound and
-redesign public ingress separately. See
+For new VNets created through a Microsoft.Network API version released after 2026-03-31,
+Azure sets subnet `defaultOutboundAccess` to `false` by default. This is API-version
+dependent, not solely creation-date dependent; existing VNets are unchanged. The
+Standard public IP attached to this VM's NIC is an explicit outbound method. If policy
+disallows it, use NAT Gateway for outbound and redesign public ingress separately. See
 [default outbound access](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/default-outbound-access)
 and [public IP addresses](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-addresses).
 
@@ -4190,7 +4239,9 @@ provider, reproduce the same invariants rather than copying a provider's button 
 1. Ubuntu Server 24.04 LTS on ARM64 or AMD64, 2 vCPU/8 GB minimum recommended.
 2. A persistent 50+ GB disk and a stable public IPv4.
 3. A default internet route and working outbound DNS/HTTPS/NTP.
-4. A stateful cloud firewall permitting only the five rules in section 3.
+4. A stateful cloud firewall permitting only the rules in
+   [mode-specific ingress](#cloud-providers-mode-specific-ingress): three for
+   desktop-only, or five for Neko-only and combined mode.
 5. SSH public-key login restricted to `<ADMIN_CIDR>`.
 6. Provider snapshot/backup and cost alerts configured before application changes.
 7. Reverse DNS is optional. Forward DNS or sslip.io is required by this runbook's Caddy
@@ -4198,7 +4249,7 @@ provider, reproduce the same invariants rather than copying a provider's button 
    implemented here.
 
 Check the provider's current CPU architecture, egress, snapshot, public-IP, and stopped-
-VM billing. Never infer â€œfreeâ€ from Ubuntu having no OS licence charge. If the image is
+VM billing. Never infer “free” from Ubuntu having no OS licence charge. If the image is
 not an OCI platform image, follow the generic UFW section below; if it has provider-
 specific firewall rules, preserve them and follow that provider's documentation.
 
@@ -4391,6 +4442,8 @@ Skip this subsection on OCI Ubuntu and follow section 7.3 instead.
 
 ```bash
 set -euo pipefail
+MODE='<neko|desktop|combined>'
+case "$MODE" in neko|desktop|combined) ;; *) echo 'Set MODE.' >&2; exit 1 ;; esac
 sudo apt-get install -y ufw
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
@@ -4403,8 +4456,10 @@ esac
 sudo ufw allow from "$SSH_SOURCE_CIDR" to any port 22 proto tcp comment 'SSH admin'
 sudo ufw allow 80/tcp comment 'Caddy HTTP ACME'
 sudo ufw allow 443/tcp comment 'Caddy HTTPS'
-sudo ufw allow 59000/tcp comment 'Neko WebRTC TCP'
-sudo ufw allow 59000/udp comment 'Neko WebRTC UDP'
+if [ "$MODE" != desktop ]; then
+  sudo ufw allow 59000/tcp comment 'Neko WebRTC TCP'
+  sudo ufw allow 59000/udp comment 'Neko WebRTC UDP'
+fi
 sudo ufw --force enable
 sudo ufw status numbered
 ```
@@ -4551,11 +4606,15 @@ sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-. /etc/os-release
-CODENAME=${UBUNTU_CODENAME:-$VERSION_CODENAME}
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $CODENAME stable" \
-  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo rm -f /etc/apt/sources.list.d/docker.list
+sudo tee /etc/apt/sources.list.d/docker.sources >/dev/null <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
@@ -4611,11 +4670,10 @@ apt-cache policy docker-ce containerd.io | sudo tee /opt/neko-cloud-manifest/doc
 
 ##### Reference: 14.1 Create secrets and environment
 
-Generate three **different** passwords: Neko administrator, Neko regular user, and
-KasmVNC write user. Never reuse a credential previously posted in chat; rotate it now.
-Generate locally or on the VM in a private shell, save it in a password manager, and do
-not paste it into shell history. The following generates the two Neko values without
-putting them on the command line; KasmVNC prompts for its separate value in section 15:
+Generate distinct Neko administrator, Neko user, and KasmVNC write passwords; rotate any
+previously disclosed value. Create them in a private shell, store them in a password
+manager, and keep them out of command history. This block generates the Neko values;
+KasmVNC prompts separately in section 15:
 
 ```bash
 sudo -i
@@ -4634,13 +4692,11 @@ unset NEKO_USER_PASSWORD NEKO_ADMIN_PASSWORD
 exit
 ```
 
-Clear the visible screen **and the terminal application's scrollback** after saving them;
-the shell `clear` command alone does not erase scrollback, terminal recordings, audit
-logs, or chat history. `.env` is readable by root and can be inspected
-by anyone with Docker/root privileges; it is not a secret vault. Do not place it in
-Git, a VM image shared with others, or an unencrypted backup. Compose secrets are
-preferable when the application natively supports file-based secrets; these Neko
-variables do not become secret merely because Compose performs interpolation.
+After storing them, clear both the visible terminal and application scrollback; `clear`
+does not erase recordings, audit logs, or chat history. `.env` is readable by root and
+Docker, not a secret vault: never put it in Git, a shared VM image, or an unencrypted
+backup. Prefer file-based secrets only when the application supports them; Compose
+interpolation adds no secrecy.
 
 Create a safe example for backups/source control:
 
@@ -4671,9 +4727,16 @@ A version tag is repeatable only until a registry tag is changed. Pull it once, 
 the immutable digest, and use `image@sha256:...` in a high-assurance rebuild:
 
 ```bash
-sudo docker pull ghcr.io/m1k1o/neko/firefox:3.1.4
-sudo docker image inspect ghcr.io/m1k1o/neko/firefox:3.1.4 \
-  --format '{{index .RepoDigests 0}}' \
+set -euo pipefail
+NEKO_TAG='ghcr.io/m1k1o/neko/firefox:3.1.4'
+NEKO_REPOSITORY='ghcr.io/m1k1o/neko/firefox'
+sudo docker pull "$NEKO_TAG"
+NEKO_REF=$(sudo docker image inspect "$NEKO_TAG" \
+  --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+  | awk -v prefix="$NEKO_REPOSITORY@sha256:" 'index($0, prefix) == 1')
+[ "$(printf '%s\n' "$NEKO_REF" | awk 'NF {n++} END {print n+0}')" -eq 1 ]
+[[ "$NEKO_REF" =~ ^ghcr\.io/m1k1o/neko/firefox@sha256:[0-9a-f]{64}$ ]]
+printf 'source=%s\nresolved=%s\n' "$NEKO_TAG" "$NEKO_REF" \
   | sudo tee /opt/neko-cloud-manifest/neko-image.txt >/dev/null
 sudo cat /opt/neko-cloud-manifest/neko-image.txt
 ```
@@ -4845,29 +4908,45 @@ Pull, record, and pin the exact image digests before first production start:
 ```bash
 set -euo pipefail
 cd /opt/neko-cloud
+NEKO_TAG='ghcr.io/m1k1o/neko/firefox:3.1.4'
+NEKO_REPOSITORY='ghcr.io/m1k1o/neko/firefox'
+CADDY_TAG='caddy:2.11.4-alpine'
+CADDY_REPOSITORY='caddy'
 sudo docker compose pull
-NEKO_REF=$(sudo docker image inspect ghcr.io/m1k1o/neko/firefox:3.1.4 \
-  --format '{{index .RepoDigests 0}}')
-CADDY_REF=$(sudo docker image inspect caddy:2.11.4-alpine \
-  --format '{{index .RepoDigests 0}}')
-for ref in "$NEKO_REF" "$CADDY_REF"; do
-  [[ "$ref" =~ ^[^[:space:]]+@sha256:[0-9a-f]{64}$ ]] || {
-    printf 'Invalid immutable image reference: %q\n' "$ref" >&2; exit 1;
+
+repo_digest_for() {
+  local image=$1 repository=$2 selected
+  selected=$(sudo docker image inspect "$image" \
+    --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+    | awk -v prefix="$repository@sha256:" 'index($0, prefix) == 1')
+  [ "$(printf '%s\n' "$selected" | awk 'NF {n++} END {print n+0}')" -eq 1 ] || {
+    echo "Expected exactly one RepoDigest for $repository after pulling $image" >&2
+    return 1
   }
-done
-[ "$(grep -Fxc '    image: ghcr.io/m1k1o/neko/firefox:3.1.4' compose.yaml)" -eq 1 ]
-[ "$(grep -Fxc '    image: caddy:2.11.4-alpine' compose.yaml)" -eq 1 ]
-printf '%s\n' "$NEKO_REF" | sudo tee /opt/neko-cloud-manifest/neko-image.txt >/dev/null
-printf '%s\n' "$CADDY_REF" | sudo tee /opt/neko-cloud-manifest/caddy-image.txt >/dev/null
-sudo sed -i "s|image: ghcr.io/m1k1o/neko/firefox:3.1.4|image: $NEKO_REF|" compose.yaml
-sudo sed -i "s|image: caddy:2.11.4-alpine|image: $CADDY_REF|" compose.yaml
+  printf '%s\n' "$selected"
+}
+
+NEKO_REF=$(repo_digest_for "$NEKO_TAG" "$NEKO_REPOSITORY")
+CADDY_REF=$(repo_digest_for "$CADDY_TAG" "$CADDY_REPOSITORY")
+[[ "$NEKO_REF" =~ ^ghcr\.io/m1k1o/neko/firefox@sha256:[0-9a-f]{64}$ ]]
+[[ "$CADDY_REF" =~ ^caddy@sha256:[0-9a-f]{64}$ ]]
+[ "$(grep -Fxc "    image: $NEKO_TAG" compose.yaml)" -eq 1 ]
+[ "$(grep -Fxc "    image: $CADDY_TAG" compose.yaml)" -eq 1 ]
+printf 'source=%s\nresolved=%s\n' "$NEKO_TAG" "$NEKO_REF" \
+  | sudo tee /opt/neko-cloud-manifest/neko-image.txt >/dev/null
+printf 'source=%s\nresolved=%s\n' "$CADDY_TAG" "$CADDY_REF" \
+  | sudo tee /opt/neko-cloud-manifest/caddy-image.txt >/dev/null
+sudo sed -i "s|image: $NEKO_TAG|image: $NEKO_REF|" compose.yaml
+sudo sed -i "s|image: $CADDY_TAG|image: $CADDY_REF|" compose.yaml
 grep -Fqx "    image: $NEKO_REF" compose.yaml
 grep -Fqx "    image: $CADDY_REF" compose.yaml
 sudo docker compose config --quiet
 ```
 
-The digest is platform-specific and makes subsequent rebuilds deterministic. Upgrades
-must deliberately replace it after testing, not silently follow a floating tag.
+The recorded value is the immutable repository/index digest returned for the exact
+pulled tag. For a multi-platform image it can identify the manifest list rather than one
+platform manifest; either form prevents later tag drift. Upgrades must deliberately
+replace both the recorded source/digest pair and Compose reference after testing.
 
 Start the container half of the stack:
 
@@ -4890,7 +4969,7 @@ Test the backend from Caddy's Docker network instead:
 sudo docker compose exec caddy wget -qO- http://neko:8080/ >/dev/null
 ```
 
-Do not â€œfixâ€ the first curl by publishing 8080. Neko's official
+Do not “fix” the first curl by publishing 8080. Neko's official
 [installation](https://neko.m1k1o.net/docs/v3/installation),
 [configuration](https://neko.m1k1o.net/docs/v3/configuration), and
 [reverse-proxy guide](https://neko.m1k1o.net/docs/v3/reverse-proxy-setup) are the
@@ -4927,7 +5006,7 @@ CPU, while inactive. A fresh build does not need XFCE or XRDP.
 ##### Reference: 15.2 Install the verified KasmVNC package
 
 KasmVNC's current installation matrix supports Ubuntu Noble on AMD64 and ARM64. This
-runbook pins release 1.4.0 and verifies the SHA-256 digest published by GitHub's official
+runbook pins release 1.5.0 and verifies the SHA-256 digest published by GitHub's official
 release API before installation:
 
 ```bash
@@ -4935,12 +5014,12 @@ set -euo pipefail
 ARCH=$(dpkg --print-architecture)
 case "$ARCH" in
   arm64)
-    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_noble_1.4.0_arm64.deb'
-    KASM_SHA256='120d9462cb5e917cad91a23f6cb0b780c06f701def40e900b29f996979200638'
+    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.5.0/kasmvncserver_noble_1.5.0_arm64.deb'
+    KASM_SHA256='c9199cf4753208bfb69fd016a9780242bebfc43370cc38c97d61e90a3c783e04'
     ;;
   amd64)
-    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.4.0/kasmvncserver_noble_1.4.0_amd64.deb'
-    KASM_SHA256='12bac6014149c5fdee75f0d403785aaa3e5dd4ea222de73253a5d4181bc9567e'
+    KASM_URL='https://github.com/kasmtech/KasmVNC/releases/download/v1.5.0/kasmvncserver_noble_1.5.0_amd64.deb'
+    KASM_SHA256='f599fe02e2175b9817b6165f74a5d2bebdc73118dde9181ba3410963bed7ae1e'
     ;;
   *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
@@ -4949,6 +5028,8 @@ KASM_DEB=$(mktemp --suffix=.deb)
 trap 'rm -f -- "$KASM_DEB"' EXIT HUP INT TERM
 curl -fL "$KASM_URL" -o "$KASM_DEB"
 printf '%s  %s\n' "$KASM_SHA256" "$KASM_DEB" | sha256sum -c -
+sudo apt-get install -y ffmpeg
+ffmpeg -hide_banner -encoders 2>/dev/null | grep 'libx264' >/dev/null
 sudo apt-get install -y "$KASM_DEB"
 rm -f -- "$KASM_DEB"
 trap - EXIT HUP INT TERM
@@ -4964,7 +5045,7 @@ Do not add this internet-controlled desktop account to `sudo`, `docker`, `lxd`, 
 home-owned placeholder certificate, so access to the system certificate group is not
 needed. Sources:
 [KasmVNC installation](https://www.kasmweb.com/kasmvnc/docs/latest/install.html) and
-[KasmVNC 1.4.0 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.4.0).
+[KasmVNC 1.5.0 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.5.0).
 
 ##### Reference: 15.3 Create the KasmVNC write-user credential
 
@@ -5041,6 +5122,8 @@ runtime_configuration:
 
 encoding:
   max_frame_rate: 30
+  video_streaming_mode:
+    codec: auto
 
 server:
   auto_shutdown:
@@ -5167,13 +5250,16 @@ retrying through a long package-maintenance window.
 On the tested Ubuntu 24.04 GNOME X11 stack, the system
 `gnome-remote-desktop.service` handover component is needed for the virtual GNOME
 session to remain alive even though RDP itself is not configured. Stopping it terminated
-the desktop during testing. Keep the **system** service enabled, while keeping TCP 3389
-closed at every firewall:
+the desktop during testing. Its package unit is installed under `graphical.target`, but
+this guide intentionally boots to `multi-user.target`; `systemctl add-wants` below makes
+the dependency survive that headless boot. Keep the **system** service active while
+keeping TCP 3389 closed at every firewall:
 
 ```bash
 sudo apt-get install -y gnome-remote-desktop
 sudo systemctl unmask gnome-remote-desktop.service
 sudo systemctl enable --now gnome-remote-desktop.service
+sudo systemctl add-wants multi-user.target gnome-remote-desktop.service
 sudo systemctl status gnome-remote-desktop.service --no-pager
 if sudo ss -lntup | grep -qE ':(3389)\b'; then
   echo 'ERROR: investigate unexpected RDP listener before continuing' >&2
@@ -5228,8 +5314,10 @@ sudo find "$DESKTOP_HOME/.vnc" -maxdepth 1 -name '*.log' \
   -exec tail -n 100 {} +
 ```
 
-TCP 8444 must bind only to 127.0.0.1. If a UDP 8444 socket is broader, do not expose it
-in the provider firewall and verify the host INPUT policy blocks it externally.
+TCP 8444 must bind only to 127.0.0.1. KasmVNC 1.5 can bind its WebUDP socket to
+`0.0.0.0:8444` even when `network.udp.public_ip` is `127.0.0.1`; this is expected upstream
+behavior, not proof of public reachability. Do not expose UDP 8444 in the provider
+firewall, and verify the host INPUT policy blocks it externally.
 
 #### Reference: 16. Connect KasmVNC privately to Caddy
 
@@ -5286,6 +5374,21 @@ Expect a successful Neko response and `401` from the desktop until Kasm credenti
 supplied. Caddy preserves WebSocket upgrades automatically.
 
 #### Reference: 17. Start everything and validate end to end
+
+Before the first validation, install both required helpers from the
+[helper appendix](#reference-required-vm-validation-helpers-and-historical-repository-checker).
+This keeps the complete reference independently reproducible:
+
+```bash
+sudoedit /usr/local/sbin/neko-cloud-preflight
+sudoedit /usr/local/sbin/neko-cloud-validate
+sudo chown root:root /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+sudo chmod 0755 /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate
+for helper in /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate; do
+  sudo bash -n "$helper"
+done
+sudo /usr/local/sbin/neko-cloud-preflight combined /opt/neko-cloud
+```
 
 ##### Reference: 17.1 Reboot test
 
@@ -5436,7 +5539,7 @@ Use this flow:
    zoom is not the same as changing the virtual display resolution.
 5. When done, sign out of sensitive websites inside the remote browser/desktop, clear
    the local clipboard, close **all** Guest/Private windows, and verify the Guest profile
-   disappeared. Do not select â€œsave passwordâ€ or download VM files to the borrowed PC.
+   disappeared. Do not select “save password” or download VM files to the borrowed PC.
 
 The reproducible GNOME session runs as the separate locked, non-sudo Linux account
 `desktop`; it is not the SSH administrator's desktop session. Its home directory is
@@ -5456,7 +5559,7 @@ cannot defeat malware, browser policy, keyloggers, screenshots, network monitori
 or a malicious owner. Avoid banking, primary email, cloud consoles, password managers,
 and private SSH keys on a machine you do not control.
 
-â€œAny laptopâ€ means no special client installation; it does not mean every guest network
+“Any laptop” means no special client installation; it does not mean every guest network
 will pass the media traffic. The Kasm desktop uses HTTPS/WebSocket on TCP 443, but this
 direct ICE-lite Neko design needs UDP 59000 or its TCP 59000 fallback. A corporate,
 hotel, or school network that permits only 80/443 can load Neko's page yet still block
@@ -5547,17 +5650,57 @@ notes and digest, replace one pinned digest in `compose.yaml`, recreate that ser
 test, and retain the old digest for rollback:
 
 ```bash
+set -euo pipefail
 cd /opt/neko-cloud
-sudo cp -a compose.yaml "compose.yaml.before-$(date -u +%Y%m%dT%H%M%SZ)"
-sudo docker pull '<IMAGE:TESTED_TAG>'
-sudo docker image inspect '<IMAGE:TESTED_TAG>' --format '{{index .RepoDigests 0}}'
-# Put that exact digest in compose.yaml, then:
+SERVICE='<neko-or-caddy>'
+IMAGE_TAG='<TESTED_TAG_FOR_THE_SELECTED_SERVICE>'
+case "$SERVICE" in
+  neko)
+    IMAGE_REPOSITORY='ghcr.io/m1k1o/neko/firefox'
+    IMAGE_MANIFEST='/opt/neko-cloud-manifest/neko-image.txt'
+    ;;
+  caddy)
+    IMAGE_REPOSITORY='caddy'
+    IMAGE_MANIFEST='/opt/neko-cloud-manifest/caddy-image.txt'
+    ;;
+  *) echo 'STOP: SERVICE must be neko or caddy' >&2; exit 1 ;;
+esac
+case "$IMAGE_TAG" in
+  "$IMAGE_REPOSITORY":*) ;;
+  *) echo 'STOP: IMAGE_TAG does not belong to the selected service repository' >&2; exit 1 ;;
+esac
+sudo test -f "$IMAGE_MANIFEST"
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+COMPOSE_BACKUP="compose.yaml.before-$STAMP"
+MANIFEST_BACKUP="$IMAGE_MANIFEST.before-$STAMP"
+sudo cp -a compose.yaml "$COMPOSE_BACKUP"
+sudo cp -a "$IMAGE_MANIFEST" "$MANIFEST_BACKUP"
+printf 'Rollback pair: %s and %s\n' "$COMPOSE_BACKUP" "$MANIFEST_BACKUP"
+sudo docker pull "$IMAGE_TAG"
+IMAGE_REF=$(sudo docker image inspect "$IMAGE_TAG" \
+  --format '{{range .RepoDigests}}{{println .}}{{end}}' \
+  | awk -v prefix="$IMAGE_REPOSITORY@sha256:" 'index($0, prefix) == 1')
+[ "$(printf '%s\n' "$IMAGE_REF" | awk 'NF {n++} END {print n+0}')" -eq 1 ]
+[[ "$IMAGE_REF" == "$IMAGE_REPOSITORY@sha256:"* ]]
+IMAGE_DIGEST=${IMAGE_REF#"$IMAGE_REPOSITORY@sha256:"}
+[[ "$IMAGE_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+printf 'Resolved immutable reference: %s\n' "$IMAGE_REF"
+sudoedit compose.yaml
 sudo docker compose config --quiet
-sudo docker compose up -d --no-deps --force-recreate '<SERVICE>'
-sudo docker compose logs --tail=200 '<SERVICE>'
+RENDERED_IMAGE=$(sudo docker compose config --format json \
+  | jq -er --arg service "$SERVICE" '.services[$service].image')
+[ "$RENDERED_IMAGE" = "$IMAGE_REF" ] || {
+  echo 'STOP: the selected Compose service does not use the resolved digest' >&2
+  exit 1
+}
+printf 'source=%s\nresolved=%s\n' "$IMAGE_TAG" "$IMAGE_REF" \
+  | sudo tee "$IMAGE_MANIFEST" >/dev/null
+sudo docker compose up -d --no-deps --force-recreate "$SERVICE"
+sudo docker compose logs --tail=200 "$SERVICE"
 ```
 
-If acceptance fails, restore the saved Compose file and run the same `up` command. For
+If acceptance fails, restore **both** printed backup paths, validate Compose, and run the
+same `up` command so the active file and provenance manifest remain paired. For
 KasmVNC/GNOME or kernel upgrades, a provider snapshot is the reliable rollback; APT does
 not provide a universal atomic rollback.
 
@@ -5592,7 +5735,14 @@ For SSH, append the new public key to `~/.ssh/authorized_keys`, fix mode 0600, p
 new key in a second session, then remove only the old public-key line. Never delete the
 only working key before testing replacement access.
 
-##### Reference: 19.4 Backups and restore order
+##### Reference: 19.4 Backups and restore order (combined-mode exact procedure)
+
+The exact file lists and commands in this subsection are for the **combined** deployment.
+They intentionally require both Neko and desktop members and will fail closed for either
+single mode. For Neko-only or desktop-only, use the operations membership table to build
+matching archive-creation and expected-member lists from the files that mode actually
+installs, review both lists, and rehearse the restore. Do not run this combined procedure
+and merely trim an `EXPECTED` list afterward.
 
 Use two independent layers:
 
@@ -5626,6 +5776,8 @@ sudo tar --xattrs --acls -C / -czf "$CONFIG_ARCHIVE" \
   etc/neko-cloud.env etc/docker/daemon.json \
   etc/ssh/sshd_config.d/00-neko-cloud-hardening.conf \
   etc/systemd/system/kasmvnc-socat.service \
+  usr/local/sbin/neko-cloud-preflight \
+  usr/local/sbin/neko-cloud-validate \
   usr/local/sbin/neko-cloud-desktop \
   "$DESKTOP_REL/.config/systemd/user/kasmvncserver@.service" \
   "$DESKTOP_REL/.vnc/kasmvnc.yaml" "$DESKTOP_REL/.vnc/xstartup"
@@ -5729,6 +5881,8 @@ EXPECTED_CONFIG=$(printf '%s\n' \
   etc/docker/daemon.json \
   etc/ssh/sshd_config.d/00-neko-cloud-hardening.conf \
   etc/systemd/system/kasmvnc-socat.service \
+  usr/local/sbin/neko-cloud-preflight \
+  usr/local/sbin/neko-cloud-validate \
   usr/local/sbin/neko-cloud-desktop \
   "$DESKTOP_REL/.config/systemd/user/kasmvncserver@.service" \
   "$DESKTOP_REL/.vnc/kasmvnc.yaml" \
@@ -5751,6 +5905,23 @@ tar --no-same-owner --no-same-permissions -xzf "$CONFIG_ARCHIVE" -C "$CONFIG_STA
 sudo install -m 0644 "$CONFIG_STAGE/opt/neko-cloud/compose.yaml" /opt/neko-cloud/compose.yaml
 sudo install -m 0644 "$CONFIG_STAGE/opt/neko-cloud/Caddyfile" /opt/neko-cloud/Caddyfile
 sudo install -m 0644 "$CONFIG_STAGE/opt/neko-cloud/.env.example" /opt/neko-cloud/.env.example
+
+# Preserve old-host inventory as evidence without presenting it as current-host state.
+sudo install -d -m 0750 -o root -g root \
+  /opt/neko-cloud-manifest /opt/neko-cloud-manifest/restored-source
+for manifest in base.txt docker-server.json docker-compose.txt docker-apt.txt \
+  neko-image.txt caddy-image.txt; do
+  sudo install -m 0640 \
+    "$CONFIG_STAGE/opt/neko-cloud-manifest/$manifest" \
+    "/opt/neko-cloud-manifest/restored-source/$manifest"
+done
+# These two are active inputs: restored Compose is pinned to their resolved digests.
+for manifest in neko-image.txt caddy-image.txt; do
+  sudo install -m 0640 \
+    "$CONFIG_STAGE/opt/neko-cloud-manifest/$manifest" \
+    "/opt/neko-cloud-manifest/$manifest"
+done
+
 if sudo test -e /etc/docker/daemon.json; then
   if ! sudo cmp -s "$CONFIG_STAGE/etc/docker/daemon.json" /etc/docker/daemon.json; then
     echo 'STOP: staged and target Docker settings differ. Compare privately and merge;' >&2
@@ -5768,8 +5939,15 @@ sudo install -m 0644 \
 sudo install -m 0644 \
   "$CONFIG_STAGE/etc/systemd/system/kasmvnc-socat.service" \
   /etc/systemd/system/kasmvnc-socat.service
+sudo install -m 0755 "$CONFIG_STAGE/usr/local/sbin/neko-cloud-preflight" \
+  /usr/local/sbin/neko-cloud-preflight
+sudo install -m 0755 "$CONFIG_STAGE/usr/local/sbin/neko-cloud-validate" \
+  /usr/local/sbin/neko-cloud-validate
 sudo install -m 0755 "$CONFIG_STAGE/usr/local/sbin/neko-cloud-desktop" \
   /usr/local/sbin/neko-cloud-desktop
+for helper in /usr/local/sbin/neko-cloud-preflight /usr/local/sbin/neko-cloud-validate; do
+  sudo bash -n "$helper"
+done
 
 sudo install -d -m 0700 -o "$DESKTOP_USER" -g "$DESKTOP_USER" \
   "$DESKTOP_HOME/.vnc" "$DESKTOP_HOME/.config/systemd/user"
@@ -5783,6 +5961,11 @@ sudo install -m 0644 -o "$DESKTOP_USER" -g "$DESKTOP_USER" \
 rm -rf -- "$CONFIG_STAGE"
 trap - EXIT HUP INT TERM
 ```
+
+The direct `neko-image.txt` and `caddy-image.txt` copies are operational inputs for the
+restored digest-pinned Compose file and its preflight checks. The `restored-source/` copy
+keeps all six old-host manifests for provenance; `base.txt` and the three Docker inventory
+files there are evidence only and must not replace the new host's current inventory.
 
 5. Decrypt secrets to protected memory-backed staging, require successful GPG
    authentication, verify exactly two regular-file members, and install them with target
@@ -5847,6 +6030,7 @@ sudo sshd -t
 sudo systemctl reload ssh.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now gnome-remote-desktop.service
+sudo systemctl add-wants multi-user.target gnome-remote-desktop.service
 if sudo ss -lntup | grep -qE ':(3389)\b'; then
   echo 'STOP: unexpected RDP listener; do not open or continue.' >&2; exit 1
 fi
@@ -5975,9 +6159,9 @@ is intentionally a reviewed checklist rather than a one-line recursive delete:
 
 #### Reference: 21. Troubleshooting
 
-##### Reference: Cloud console says â€œunresponsiveâ€ or SSH fails
+##### Reference: Cloud console says “unresponsive” or SSH fails
 
-1. Check provider lifecycle state and infrastructure/instance health metrics; â€œRunningâ€
+1. Check provider lifecycle state and infrastructure/instance health metrics; “Running”
    does not prove the guest OS is healthy.
 2. Check whether HTTPS still works. If only SSH fails, the administrator public IP may
    have changed or the `/32` rule may be wrong.
@@ -6214,8 +6398,10 @@ docker image inspect caddy:2.11.4-alpine --format '{{json .RepoDigests}}'
 dpkg-query -W kasmvncserver ubuntu-desktop-minimal gnome-shell 2>/dev/null
 ```
 
-Record both the human-friendly release/tag and the architecture-specific image digest.
-A digest copied from an ARM64 deployment may not be valid for AMD64. Treat updates as a
+Record both the human-friendly release/tag and the exact repository digest. That digest
+may identify a multi-platform index shared across architectures or a platform-specific
+child manifest. Do not assume portability from the digest shape alone: inspect the
+selected image's platform support on each target architecture. Treat updates as a
 reviewed change with a rollback point.
 
 ##### Reference: Configuration-path record
@@ -6259,7 +6445,7 @@ encrypted system.
 #### Reference: 23. Authoritative references
 
 All provider limits, prices, regions, and software versions can change. The statements
-above were checked through 2026-07-20 against these primary sources.
+above were checked through 2026-07-30 against these primary sources.
 
 ##### Reference: OCI
 
@@ -6303,13 +6489,17 @@ above were checked through 2026-07-20 against these primary sources.
 - [Bpsv2 ARM sizes](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/general-purpose/bpsv2-series)
 - [Azure free account](https://azure.microsoft.com/en-us/free/)
 - [Canonical Ubuntu image discovery](https://documentation.ubuntu.com/azure/azure-how-to/instances/find-ubuntu-images/)
+- [Canonical Ubuntu Azure launch guidance](https://ubuntu.com/azure/docs/azure-how-to/instances/launch-ubuntu-images/)
+- [Azure account offer for India](https://azure.microsoft.com/en-in/pricing/purchase-options/azure-account)
 - [Network security groups](https://learn.microsoft.com/en-us/azure/virtual-network/manage-network-security-group)
 - [Run Azure CLI in an official Docker container](https://learn.microsoft.com/en-us/cli/azure/run-azure-cli-docker)
 - [Public IP addresses](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/public-ip-addresses)
 - [Explicit/default outbound access](https://learn.microsoft.com/en-us/azure/virtual-network/ip-services/default-outbound-access)
+- [Trusted Launch FAQ and ARM64 scope](https://learn.microsoft.com/en-us/azure/virtual-machines/trusted-launch-faq)
 
 ##### Reference: Neko, KasmVNC, Caddy, Docker, and Ubuntu
 
+- [Ubuntu 24.04 LTS releases](https://releases.ubuntu.com/noble/)
 - [m1k1o/neko upstream repository](https://github.com/m1k1o/neko)
 - [Neko introduction](https://neko.m1k1o.net/docs/v3/introduction)
 - [Neko quick start and sizing](https://neko.m1k1o.net/docs/v3/quick-start)
@@ -6321,12 +6511,17 @@ above were checked through 2026-07-20 against these primary sources.
 - [KasmVNC server configuration](https://www.kasmweb.com/kasmvnc/docs/master/serverside.html)
 - [KasmVNC client/browser requirements](https://www.kasmweb.com/kasmvnc/docs/master/clientside.html)
 - [KasmVNC `vncpasswd`](https://kasmweb.com/kasmvnc/docs/master/man/vncpasswd.html)
-- [KasmVNC 1.4.0 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.4.0)
+- [KasmVNC 1.5.0 release](https://github.com/kasmtech/KasmVNC/releases/tag/v1.5.0)
+- [KasmVNC 1.5 versioned defaults](https://github.com/kasmtech/KasmVNC/blob/v1.5.0/unix/kasmvnc_defaults.yaml)
+- [KasmVNC 1.5 versioned encoder probe](https://github.com/kasmtech/KasmVNC/blob/v1.5.0/common/rfb/encoders/EncoderProbe.cpp)
+- [KasmVNC 1.5 versioned WebUDP implementation](https://github.com/kasmtech/KasmVNC/blob/v1.5.0/common/network/webudp/WuNetwork.cpp)
 - [Caddy automatic HTTPS](https://caddyserver.com/docs/automatic-https)
 - [Caddy reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy)
 - [Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
 - [Docker Compose plugin](https://docs.docker.com/compose/install/linux/)
+- [Docker Compose version history and v5 transition](https://docs.docker.com/compose/intro/history/)
 - [Docker port publishing](https://docs.docker.com/engine/network/port-publishing/)
+- [Docker image digests and multi-platform manifests](https://docs.docker.com/dhi/explore/security-concepts/digests/)
 - [Docker packet filtering/firewalls](https://docs.docker.com/engine/network/packet-filtering-firewalls/)
 - [Ubuntu firewall guidance](https://documentation.ubuntu.com/server/how-to/security/firewalls/)
 - [sslip.io mapping behavior](https://sslip.io/)
@@ -6334,7 +6529,7 @@ above were checked through 2026-07-20 against these primary sources.
 
 The KasmVNC `latest`/`master` pages are moving documentation and may change after this
 runbook's review date. The package URL, SHA-256 values, and GitHub release are pinned to
-1.4.0; use the installed 1.4.0 man pages plus its release notes when a moving page differs,
+1.5.0; use the installed 1.5.0 man pages plus its release notes when a moving page differs,
 and re-audit every command before upgrading KasmVNC.
 
 #### Reference: 24. Replication completion checklist
@@ -6399,9 +6594,10 @@ passwords, or unredacted screenshots.
 | Gateway | Caddy with two HTTPS hostnames |
 | Media | Neko TCP+UDP mux on 59000 |
 
-This combined build was verified on 2026-07-19. Azure Neko-only was separately
-infrastructure-tested in the next case study; AWS, GCP, and generic VPS paths remain
-source-grounded equivalents rather than claims of executed deployments.
+This combined build was initially verified on 2026-07-19 and maintenance-verified again
+on 2026-07-30. Azure Neko-only was separately infrastructure-tested in the next case
+study; AWS, GCP, and generic VPS paths remain source-grounded equivalents rather than
+claims of executed deployments.
 
 #### Reference: What happened
 
@@ -6425,6 +6621,33 @@ source-grounded equivalents rather than claims of executed deployments.
 9. A later GNOME restart left Xvnc and its authenticated WebSocket alive with a black
    framebuffer. Running KasmVNC in the foreground and restarting the complete process
    tree on every session exit made the desktop self-healing.
+
+#### Reference: 2026-07-30 maintenance refresh
+
+- Ubuntu 24.04.4 ARM64 and all offered APT packages were updated; no reboot-required
+  marker or failed system unit remained after the maintenance reboot.
+- KasmVNC was upgraded from 1.4.0 to checksum-verified `1.5.0-1`. FFmpeg `libx264` and
+  `codec: auto` were added while the existing 720p/30 cap was retained for this CPU-only
+  VM, and the full GNOME/Xvnc process tree returned after reboot.
+- Neko Firefox 3.1.4 remained the current reviewed image. Caddy was changed from a
+  floating `2-alpine` Compose reference to explicit `2.11.4-alpine`; both containers
+  were recreated from current registry digests and returned healthy/up. After acceptance,
+  both live Compose references were promoted to those exact digests, recreated once more,
+  and reverified through their public HTTPS endpoints.
+- The historical live VM still uses `/opt/neko` and the non-root `ubuntu` session owner.
+  That as-built layout was preserved to avoid an unrelated identity/path migration; new
+  deployments continue to use the portable `/opt/neko-cloud` and locked `desktop` design.
+- KasmVNC 1.5's TCP listener remained loopback-only and Caddy continued through the
+  private socket bridge. Its upstream WebUDP socket bound broadly on UDP 8444 as
+  expected, while provider and host rules kept that port unreachable from the internet.
+- The host default was corrected from `graphical.target` to `multi-user.target`, with the
+  required GNOME handover service explicitly attached to that headless target.
+- Root-only configuration archives and both old/new Kasm packages were retained for
+  rollback. A 1.4 rollback must restore the pre-1.5 Kasm YAML together with the 1.4 DEB,
+  because 1.4 does not understand the new 1.5 video-codec key. Post-reboot checks covered
+  versions, services, process tree, listeners,
+  container health, trusted public TLS, and expected HTTP 200/401 responses. This
+  maintenance pass did not repeat interactive keyboard/audio testing.
 
 #### Reference: Corrections carried into the generic project
 
@@ -6521,6 +6744,19 @@ All notable project changes are recorded here. Dates use ISO 8601.
   publishable deployment assets.
 - Replaced the host-specific landing page with a generic repository guide.
 
+#### Reference: 2026-07-30
+
+- Maintenance-upgraded and reboot-verified the OCI ARM64 combined VM on Ubuntu 24.04.4,
+  KasmVNC 1.5.0, FFmpeg software H.264, Neko 3.1.4, and Caddy 2.11.4; the live Neko and
+  Caddy Compose references were then pinned to their verified immutable digests.
+- Updated all Kasm package digests, templates, validation, codec guidance, documented
+  the 1.5 WebUDP bind behavior without opening UDP 8444, and made the GNOME handover
+  dependency explicit for headless `multi-user.target` boots.
+- Updated Docker repository syntax, Compose v2/v5 wording, cloud free-tier/network facts,
+  and provider CLI examples so ingress follows the selected deployment mode.
+- Repaired standalone helper installation, immutable-digest preflight checks,
+  single-mode backup/restore guidance, extensionless key ignores, and text encoding.
+
 #### Reference: 2026-07-20
 
 - Added the sanitized Azure AMD64 Neko-only infrastructure case study.
@@ -6561,12 +6797,13 @@ Run from the repository root:
 git diff --check
 ```
 
-For the complete container-backed check, including Caddy parsing and mandatory
-ShellCheck, run `make check-full`. The repository validation must parse every shell
-script and Compose variant, reject committed secrets/rendered endpoints, and check
-documentation links. [the post-deployment helper](#reference-helper-script-post-deployment-validation) saved as `/usr/local/sbin/neko-cloud-validate` is a separate post-deployment check that
-runs on an installed VM and requires a mode argument. If a change cannot be tested end
-to end, state exactly which provider/mode was not tested.
+This four-file repository does not ship a Makefile or materialized source-tree checker;
+do not run the historical `make check-full` command. Validate changed fenced scripts,
+Compose blocks, YAML, Markdown anchors, and external links with appropriate local tools,
+and record exactly what was exercised. The installed
+[post-deployment helper](#reference-helper-script-post-deployment-validation) is a
+separate VM check that requires a mode argument. If a change cannot be tested end to
+end, state exactly which provider/mode was not tested.
 
 Do not silently update image tags, KasmVNC packages, checksums, firewall behavior, or
 cloud-free-tier claims. Include the upstream source and a rollback note.
@@ -6945,6 +7182,8 @@ runtime_configuration:
 
 encoding:
   max_frame_rate: 30
+  video_streaming_mode:
+    codec: auto
 
 server:
   auto_shutdown:
@@ -7055,19 +7294,17 @@ RestartSec=2s
 WantedBy=multi-user.target
 ```
 
-### Reference: Optional original helper scripts
+### Reference: Required VM validation helpers and historical repository checker
 
-The deployment tutorials are complete in Markdown. The following three original helper
-sources are retained verbatim for lossless reproduction. To use the read-only VM checks,
-save the preflight and post-deployment blocks to the labeled `/usr/local/sbin` filenames,
-set owner `root:root` and mode `0755`, and invoke the names shown by the tutorials. Their
-historical usage banners still mention the former folder-based paths. The repository
-checker expects that former multi-folder layout and is reference-only in this four-file
-documentation repository.
+The two VM validation helpers below are required by every tutorial. Save them to the
+labeled `/usr/local/sbin` filenames, set owner `root:root` and mode `0755`, and verify
+both with `bash -n` before first use. The third block is the historical repository
+checker: it expects the former multi-folder layout and remains readable reference only
+in this documentation-only repository.
 
 #### Reference helper script: Preflight
 
-Intended optional runtime filename: `/usr/local/sbin/neko-cloud-preflight`.
+Required runtime filename: `/usr/local/sbin/neko-cloud-preflight`.
 
 ```bash
 #!/usr/bin/env bash
@@ -7076,7 +7313,7 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: sudo ./scripts/preflight.sh <neko|desktop|combined> [deployment-directory]
+Usage: sudo /usr/local/sbin/neko-cloud-preflight <neko|desktop|combined> [deployment-directory]
 
 The deployment directory defaults to /opt/neko-cloud. It must contain compose.yaml,
 Caddyfile, and a populated mode-specific .env.
@@ -7186,7 +7423,7 @@ ENV_FILE=$DEPLOY_DIR/.env
 for command_name in awk curl docker getent grep openssl python3 sed sort ss stat; do
   require_command "$command_name"
 done
-docker compose version >/dev/null 2>&1 || fail 'Docker Compose v2 plugin is unavailable'
+docker compose version >/dev/null 2>&1 || fail 'the supported Docker Compose CLI plugin is unavailable'
 require_file "$DEPLOY_DIR/compose.yaml"
 require_file "$DEPLOY_DIR/Caddyfile"
 require_file "$ENV_FILE"
@@ -7219,6 +7456,8 @@ if [ "$MODE" = neko ] || [ "$MODE" = combined ]; then
   [ "$NEKO_HOST" != neko.example.com ] || fail 'NEKO_HOST still uses the example domain'
   [ "${#NEKO_USER_PASSWORD}" -ge 24 ] || fail 'NEKO_USER_PASSWORD must be at least 24 characters'
   [ "${#NEKO_ADMIN_PASSWORD}" -ge 24 ] || fail 'NEKO_ADMIN_PASSWORD must be at least 24 characters'
+  [ "$NEKO_USER_PASSWORD" != UNIQUE_REGULAR_USER_PASSWORD ] || fail 'NEKO_USER_PASSWORD still uses the documented placeholder'
+  [ "$NEKO_ADMIN_PASSWORD" != DIFFERENT_UNIQUE_ADMIN_PASSWORD ] || fail 'NEKO_ADMIN_PASSWORD still uses the documented placeholder'
   [ "$NEKO_USER_PASSWORD" != "$NEKO_ADMIN_PASSWORD" ] || fail 'Neko user and administrator passwords must differ'
   check_dns "$NEKO_HOST" "$PUBLIC_IP"
   unset NEKO_USER_PASSWORD NEKO_ADMIN_PASSWORD
@@ -7237,7 +7476,7 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
   require_file /home/desktop/.vnc/xstartup
   require_file '/home/desktop/.config/systemd/user/kasmvncserver@.service'
   require_file /etc/systemd/system/kasmvnc-socat.service
-  for command_name in dbus-update-activation-environment gnome-session kasmvncserver loginctl pgrep runuser socat systemctl; do
+  for command_name in dbus-update-activation-environment ffmpeg gnome-session kasmvncserver loginctl pgrep runuser socat systemctl; do
     require_command "$command_name"
   done
 
@@ -7251,30 +7490,60 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
   if grep -Eq '/run/user/[0-9]+' '/home/desktop/.config/systemd/user/kasmvncserver@.service'; then
     fail 'Kasm user unit contains a hardcoded numeric UID'
   fi
-  grep -Fq 'interface: 127.0.0.1' /home/desktop/.vnc/kasmvnc.yaml || fail 'KasmVNC must bind to loopback'
+  grep -Fq 'interface: 127.0.0.1' /home/desktop/.vnc/kasmvnc.yaml || fail 'KasmVNC TCP must bind to loopback'
+  grep -Fq 'codec: auto' /home/desktop/.vnc/kasmvnc.yaml || fail 'KasmVNC video codec must remain automatic'
   grep -Fq '/home/desktop/.vnc/kasmvnc.crt' /home/desktop/.vnc/kasmvnc.yaml || fail 'Kasm config does not target /home/desktop'
+  ffmpeg -hide_banner -encoders 2>/dev/null | grep 'libx264' >/dev/null || fail 'FFmpeg libx264 encoder is unavailable'
 
   installed_kasm=$(dpkg-query -W -f='${Version}' kasmvncserver 2>/dev/null || true)
   case "$installed_kasm" in
-    1.4.0-1) ;;
+    1.5.0-1) ;;
     '') fail 'KasmVNC package is not installed' ;;
-    *) fail "expected KasmVNC 1.4.0-1, found $installed_kasm" ;;
+    *) fail "expected KasmVNC 1.5.0-1, found $installed_kasm" ;;
   esac
   pass 'GNOME/KasmVNC commands, version, and installed templates are compatible'
 fi
 
 docker compose --env-file "$ENV_FILE" -f "$DEPLOY_DIR/compose.yaml" config --quiet
 pass 'Docker Compose interpolation and schema validation succeeded'
+validate_image_pin() {
+  local label=$1 source_ref=$2 repository=$3 pattern=$4 manifest=$5
+  local count deployed_ref recorded_source recorded_ref normalized_ref
+  count=$(grep -Ec -- "$pattern" "$DEPLOY_DIR/compose.yaml" || true)
+  [ "$count" -eq 1 ] || fail "$label image must occur exactly once as the reviewed tag or an immutable SHA-256 digest"
+  deployed_ref=$(grep -E -- "$pattern" "$DEPLOY_DIR/compose.yaml" \
+    | sed -E 's/^[[:space:]]*image:[[:space:]]*//; s/[[:space:]]*$//')
+  case "$deployed_ref" in
+    *@sha256:*)
+      require_file "$manifest"
+      recorded_source=$(awk -F= '$1 == "source" { print $2 }' "$manifest")
+      recorded_ref=$(awk -F= '$1 == "resolved" { print $2 }' "$manifest")
+      [ "$recorded_source" = "$source_ref" ] || fail "$label manifest source is not $source_ref"
+      case "$deployed_ref" in
+        "$source_ref"@sha256:*) normalized_ref="$repository@${deployed_ref#*@}" ;;
+        *) normalized_ref=$deployed_ref ;;
+      esac
+      [ "$recorded_ref" = "$normalized_ref" ] || fail "$label Compose digest does not match its recorded manifest"
+      ;;
+  esac
+}
+
 if [ "$MODE" = neko ] || [ "$MODE" = combined ]; then
-  grep -Fq 'ghcr.io/m1k1o/neko/firefox:3.1.4' "$DEPLOY_DIR/compose.yaml" || fail 'Neko image is not pinned to 3.1.4'
+  validate_image_pin Neko \
+    'ghcr.io/m1k1o/neko/firefox:3.1.4' 'ghcr.io/m1k1o/neko/firefox' \
+    '^[[:space:]]*image:[[:space:]]*(ghcr\.io/m1k1o/neko/firefox:3\.1\.4(@sha256:[0-9a-f]{64})?|ghcr\.io/m1k1o/neko/firefox@sha256:[0-9a-f]{64})[[:space:]]*$' \
+    /opt/neko-cloud-manifest/neko-image.txt
 fi
-grep -Fq 'caddy:2.11.4-alpine' "$DEPLOY_DIR/compose.yaml" || fail 'Caddy image is not pinned to 2.11.4-alpine'
+validate_image_pin Caddy \
+  'caddy:2.11.4-alpine' caddy \
+  '^[[:space:]]*image:[[:space:]]*(caddy:2\.11\.4-alpine(@sha256:[0-9a-f]{64})?|caddy@sha256:[0-9a-f]{64})[[:space:]]*$' \
+  /opt/neko-cloud-manifest/caddy-image.txt
 pass "preflight completed successfully for $MODE"
 ```
 
 #### Reference helper script: Post-deployment validation
 
-Intended optional runtime filename: `/usr/local/sbin/neko-cloud-validate`.
+Required runtime filename: `/usr/local/sbin/neko-cloud-validate`.
 
 ```bash
 #!/usr/bin/env bash
@@ -7283,7 +7552,7 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-Usage: sudo ./scripts/validate.sh <neko|desktop|combined> [deployment-directory]
+Usage: sudo /usr/local/sbin/neko-cloud-validate <neko|desktop|combined> [deployment-directory]
 
 The deployment directory defaults to /opt/neko-cloud. The check does not install,
 start, stop, restart, or otherwise mutate services.
@@ -7293,6 +7562,7 @@ EOF
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
+warn() { printf 'WARN: %s\n' "$*" >&2; }
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || fail "required command is missing: $1"
@@ -7348,19 +7618,13 @@ $listeners
 EOF
 }
 
-require_no_public_udp() {
-  local port=$1 listeners local_address
+require_no_udp_listener() {
+  local port=$1 listeners
   listeners=$(udp_listeners "$port")
-  [ -z "$listeners" ] && return
-  while IFS= read -r line; do
-    local_address=$(printf '%s\n' "$line" | awk '{ print $4 }')
-    case "$local_address" in
-      127.0.0.1:"$port"|'[::1]':"$port") ;;
-      *) printf '%s\n' "$line" >&2; fail "UDP $port is exposed beyond loopback" ;;
-    esac
-  done <<EOF
-$listeners
-EOF
+  [ -z "$listeners" ] || {
+    printf '%s\n' "$listeners" >&2
+    fail "UDP $port must not be listening in this mode"
+  }
 }
 
 https_code() {
@@ -7460,7 +7724,7 @@ if [ "$MODE" = neko ] || [ "$MODE" = combined ]; then
   pass "Neko HTTPS and WebRTC mux listeners passed ($neko_code)"
 else
   require_no_tcp_listener 59000
-  [ -z "$(udp_listeners 59000)" ] || fail 'UDP 59000 must be absent in desktop-only mode'
+  require_no_udp_listener 59000
 fi
 
 if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
@@ -7511,7 +7775,10 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
   [ "$(loginctl show-user desktop -p Linger --value)" = yes ] || fail 'systemd linger is not enabled for desktop'
   [ "$(systemctl get-default)" = multi-user.target ] || fail 'headless host default target must be multi-user.target'
   [ "$(systemctl is-enabled gdm3.service 2>/dev/null || true)" = masked ] || fail 'gdm3.service must remain masked'
-  [ "$(dpkg-query -W -f='${Version}' kasmvncserver 2>/dev/null || true)" = 1.4.0-1 ] || fail 'installed KasmVNC package must be 1.4.0-1'
+  [ -L /etc/systemd/system/multi-user.target.wants/gnome-remote-desktop.service ] || fail 'GNOME handover service is not attached to multi-user.target'
+  [ "$(dpkg-query -W -f='${Version}' kasmvncserver 2>/dev/null || true)" = 1.5.0-1 ] || fail 'installed KasmVNC package must be 1.5.0-1'
+  require_command ffmpeg
+  ffmpeg -hide_banner -encoders 2>/dev/null | grep 'libx264' >/dev/null || fail 'FFmpeg libx264 encoder is unavailable'
 
   [ -S /run/kasmvnc/kasm.sock ] || fail '/run/kasmvnc/kasm.sock is missing or is not a Unix socket'
   [ "$(stat -c '%a' /run/kasmvnc/kasm.sock)" = 660 ] || fail 'KasmVNC bridge socket must have mode 0660'
@@ -7526,10 +7793,24 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
     DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$desktop_uid/bus" \
     systemctl --user is-active --quiet 'kasmvncserver@:1.service' \
     || fail 'desktop KasmVNC user service is not active'
+  desktop_fragment=$(runuser -u desktop -- env \
+    HOME=/home/desktop USER=desktop LOGNAME=desktop \
+    XDG_RUNTIME_DIR="/run/user/$desktop_uid" \
+    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$desktop_uid/bus" \
+    systemctl --user show -p FragmentPath --value 'kasmvncserver@:1.service')
+  [ "$desktop_fragment" = '/home/desktop/.config/systemd/user/kasmvncserver@.service' ] \
+    || fail "effective Kasm user unit is unexpected: $desktop_fragment"
   wait_for_desktop_session desktop || fail 'Xvnc and the complete Ubuntu GNOME process tree are not healthy'
+  xvnc_args=$(pgrep -a -u desktop -f '^/usr/bin/(Xvnc|Xkasmvnc) :1( |$)')
+  printf '%s\n' "$xvnc_args" \
+    | grep -Eq -- '(^|[[:space:]])-videoCodec[[:space:]]+auto([[:space:]]|$)' \
+    || fail 'running KasmVNC process is not using automatic video-codec selection'
 
   require_loopback_only_tcp 8444
-  require_no_public_udp 8444
+  kasm_udp=$(udp_listeners 8444)
+  if [ -n "$kasm_udp" ]; then
+    warn 'KasmVNC 1.5 WebUDP is listening on UDP 8444; this expected upstream socket must remain denied by host and provider firewalls'
+  fi
   kasm_code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
     --noproxy '*' --connect-timeout 5 --max-time 15 \
     --unix-socket /run/kasmvnc/kasm.sock \
@@ -7542,7 +7823,7 @@ if [ "$MODE" = desktop ] || [ "$MODE" = combined ]; then
   pass 'GNOME/KasmVNC service, private bridge, TLS, and authentication challenge passed'
 else
   require_no_tcp_listener 8444
-  require_no_public_udp 8444
+  require_no_udp_listener 8444
 fi
 
 pass "post-deployment validation completed successfully for $MODE"
@@ -7585,7 +7866,7 @@ else
 fi
 
 command -v docker >/dev/null 2>&1 || fail 'Docker is required for Compose validation'
-docker compose version >/dev/null 2>&1 || fail 'Docker Compose v2 is required'
+docker compose version >/dev/null 2>&1 || fail 'the Docker Compose CLI plugin is required'
 
 for mode in neko desktop combined; do
   compose_file="deploy/$mode.compose.yaml"
