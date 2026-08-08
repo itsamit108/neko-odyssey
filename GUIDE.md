@@ -2337,6 +2337,26 @@ inherits the persistent GNOME session.
 - Test the expected URLs from a second network and recheck closed internal ports.
 - Make an encrypted off-VM backup and periodically rehearse restoration.
 
+#### Operations: Live OCI internal monthly maintenance
+
+The sanitized live OCI combined deployment does not use GitHub Actions for updates.
+Its host-owned systemd timer checks daily, runs at most once per UTC month, and defers
+while Neko or KasmVNC has an active session. A persistent monthly marker prevents repeat
+runs. The maintenance job:
+
+1. records status and takes rollback-ready configuration/profile backups;
+2. installs normal Ubuntu package and snap updates;
+3. verifies and installs the current official KasmVNC Noble ARM64 release by checksum;
+4. pulls the official Neko Firefox image, recreates Neko only when its digest changed,
+   and rolls back if container or HTTPS health checks fail;
+5. verifies Neko, KasmVNC, Caddy, the Firefox profile, and public HTTPS;
+6. keeps four recent maintenance backup sets and reports whether a reboot is required.
+
+The timer does not reboot the VM and does not stop it for inactivity. Ubuntu's standard
+daily security-update timer remains enabled. This is an as-built operational policy for
+the live reference host; generic deployments may continue to use the manual controlled
+procedure below.
+
 ### Operations: Update and roll back
 
 Treat every image, package, or desktop change as a controlled maintenance event.
@@ -6649,6 +6669,22 @@ claims of executed deployments.
   container health, trusted public TLS, and expected HTTP 200/401 responses. This
   maintenance pass did not repeat interactive keyboard/audio testing.
 
+#### Reference: 2026-08-08 live refresh
+
+- Neko was moved out of legacy mode to the current official Firefox image and verified
+  at 1368x768@60 with software H.264/x264 ultrafast, zero-latency settings, 4.5 Mbps,
+  two encoder threads, and a 120-frame key interval.
+- The complete Firefox root, including `profiles.ini` and the deterministic profile,
+  now lives on a host mount. Recreating or updating the container no longer discards it
+  or opens the Firefox profile selector.
+- Neko now uses `restart: unless-stopped`, 2 GiB shared memory, and Docker JSON log
+  rotation of 10 MiB x 3. Caddy supplies automatic HTTPS and explicit security headers.
+- GNOME/KasmVNC was verified at 1368x768@60. Its 30-minute idle rule disconnects the
+  desktop viewer; it does not stop the OCI VM.
+- Internal systemd maintenance now performs the controlled monthly update flow described
+  above, without GitHub Actions. Its first successful cycle completed on 2026-08-08;
+  Neko and KasmVNC returned healthy and no reboot was required.
+
 #### Reference: Corrections carried into the generic project
 
 - The publishable Kasm unit uses `%t`, never a hardcoded `/run/user/<UID>`.
@@ -6743,6 +6779,9 @@ All notable project changes are recorded here. Dates use ISO 8601.
 - Removed live hostnames, public/private IPs, `/home/ubuntu`, and UID `1001` from
   publishable deployment assets.
 - Replaced the host-specific landing page with a generic repository guide.
+- Recorded the sanitized 2026-08-08 live OCI configuration: modern Neko Firefox,
+  persistent full Firefox profile, 1368x768@60 Neko and KasmVNC, bounded logs, Caddy
+  security headers, and host-internal monthly maintenance with rollback.
 
 #### Reference: 2026-07-30
 

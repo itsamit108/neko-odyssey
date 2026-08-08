@@ -12,10 +12,33 @@ networking, commands, configuration templates, validation scripts, security, cos
 operations, recovery, and sanitized OCI end-to-end and Azure infrastructure-test case
 studies. Nothing is hidden behind a generator or installer.
 
-Current reviewed baseline (2026-07-30): Ubuntu 24.04.4, Neko Firefox 3.1.4,
-KasmVNC 1.5.0, and Caddy 2.11.4. The guide pins release artifacts and versioned image
-tags, documents promotion to resolved digests, and records when a path is source-reviewed
-rather than live-tested.
+Current reviewed baseline (2026-08-08): Ubuntu 24.04 ARM64, current official Neko
+Firefox image, KasmVNC 1.5.0, and Caddy. The generic templates still use reviewed
+versions or digests. The live OCI combined deployment instead performs a controlled
+internal update once per UTC month, with backup, health checks, and rollback.
+
+## Verified live OCI deployment
+
+The sanitized reference deployment currently uses:
+
+| Part | Verified configuration |
+|---|---|
+| Compute | OCI Mumbai, non-Spot Ampere A1 Flex; 2 OCPUs and 12 GiB RAM |
+| Storage | About 200 GB boot volume; complete Firefox profile persisted on the host |
+| Neko | Modern mode, official Firefox image, 1368x768 at 60 FPS |
+| Video | H.264/x264 ultrafast, zero latency, 4.5 Mbps, 2 threads, key interval 120 |
+| WebRTC | ICE Lite; TCP and UDP mux on 59000 |
+| Desktop | Persistent Ubuntu GNOME through KasmVNC 1.5.0 at 1368x768 and 60 FPS |
+| Public edge | Caddy automatic HTTPS and explicit security headers; internal ports stay private |
+| Runtime safety | `restart: unless-stopped`, 2 GiB shared memory, Docker logs limited to 10 MiB x 3 |
+| Updates | Internal systemd maintenance once per UTC month, deferred while either service is active |
+| VM shutdown | None; KasmVNC's idle disconnect does not stop the OCI VM |
+
+The live updater checks daily but changes the system at most once per UTC month. It
+updates normal Ubuntu packages and snaps, verifies the official KasmVNC ARM64 package,
+updates Neko only after a Firefox-profile backup, validates both HTTPS services, and
+rolls Neko back on failure. Ubuntu security updates continue through the standard daily
+APT timer. It does not reboot automatically.
 
 ## Choose one mode
 
@@ -52,7 +75,7 @@ enter Git. Direct application passwords do not provide MFA; sensitive deployment
 should add a compatible identity-aware proxy or VPN.
 
 The combined design was tested end to end on Ubuntu 24.04 ARM64 in OCI and
-maintenance-reverified on 2026-07-30. Neko-only was
+maintenance-reverified on 2026-08-08. Neko-only was
 also deployed and infrastructure-tested on Ubuntu 24.04 AMD64 in Azure, including
 trusted TLS, the TCP/UDP boundary, cleanup, persistent swap, and reboot recovery. The
 remaining provider/mode paths are grounded in official documentation and equivalent
